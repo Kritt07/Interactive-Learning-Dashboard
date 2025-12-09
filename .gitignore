@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files
+data/*.csv
+data/*.xlsx
+!data/sample.csv       # sample.csv оставляем для примеров и тестов
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# Node (если подключишь фронт)
+node_modules/
+dist/
+build/
+
+# Cache
+*.cache/
+.cache/
