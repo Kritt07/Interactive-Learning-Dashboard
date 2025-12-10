@@ -5,6 +5,7 @@ uvicorn[standard]>=0.29.0
 # Data processing
 pandas>=2.1.0
 numpy>=1.23.0
+openpyxl>=3.0.0  # For Excel file reading
 
 # Visualizations
 plotly>=5.18.0
