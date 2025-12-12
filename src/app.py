@@ -1,9 +1,51 @@
 """
 FastAPI application for Interactive Student Performance Dashboard.
 """
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from fastapi.responses import JSONResponse
+from typing import Optional, List, Dict
+import logging
+import pandas as pd
+import numpy as np
+import json
+from datetime import datetime, date
+
+from src.data_loader import get_data_loader
+from src.config import DATA_DIR, PROCESSED_DIR
+from src import plots
+from src import analytics
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def convert_to_serializable(obj):
+    """Преобразует объекты в сериализуемый формат для JSON."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+        return float(obj)
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {key: convert_to_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_serializable(item) for item in obj]
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    else:
+        # Пытаемся преобразовать в строку, если это что-то еще
+        try:
+            if pd.isna(obj):
+                return None
+        except (ValueError, TypeError):
+            pass
+        # Последняя попытка - преобразовать в строку
+        return str(obj)
 
 app = FastAPI(
     title="Interactive Student Performance Dashboard",
@@ -20,6 +62,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Инициализация DataLoader
+data_loader = get_data_loader(
+    data_dir=str(DATA_DIR),
+    cache_dir=str(PROCESSED_DIR)
+)
+
 
 @app.get("/")
 async def root():
@@ -30,7 +78,9 @@ async def root():
         "endpoints": {
             "plot_data": "/api/plot-data",
             "students": "/api/students",
-            "grades": "/api/grades"
+            "grades": "/api/grades",
+            "statistics": "/api/statistics",
+            "student_statistics": "/api/students/{student_id}/statistics"
         }
     }
 
@@ -38,37 +88,193 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    try:
+        # Пробуем загрузить данные для проверки работоспособности
+        data_loader.load_data(use_cache=True)
+        return {"status": "healthy"}
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {"status": "unhealthy", "error": str(e)}
 
 
 @app.get("/api/plot-data")
-async def get_plot_data():
+async def get_plot_data(
+    plot_type: Optional[str] = Query(None, description="Тип графика: distribution, trend, comparison, heatmap, box, dashboard"),
+    student_id: Optional[int] = Query(None, description="Фильтр по ID студента"),
+    subject: Optional[str] = Query(None, description="Фильтр по предмету")
+):
     """Выдаёт данные для графиков."""
-    # TODO: Implement plot data generation using plots.py
-    return {
-        "data": [],
-        "layout": {}
-    }
+    try:
+        df = data_loader.load_data(use_cache=True)
+        
+        if df.empty:
+            return {"data": [], "layout": {}}
+        
+        plot_type = plot_type or "dashboard"
+        
+        if plot_type == "distribution":
+            plot_dict = plots.create_grade_distribution_plot(df)
+        elif plot_type == "trend":
+            plot_dict = plots.create_performance_trend_plot(df, student_id=student_id, subject=subject)
+        elif plot_type == "comparison":
+            if student_id is not None:
+                plot_dict = plots.create_student_comparison_plot(df, subject=subject)
+            else:
+                plot_dict = plots.create_subject_comparison_plot(df)
+        elif plot_type == "heatmap":
+            plot_dict = plots.create_subject_heatmap(df, student_id=student_id)
+        elif plot_type == "box":
+            plot_dict = plots.create_box_plot_by_subject(df)
+        elif plot_type == "dashboard":
+            plot_dict = plots.create_dashboard_plots(df)
+        else:
+            plot_dict = plots.create_dashboard_plots(df)
+        
+        # Преобразуем все numpy типы в стандартные Python типы для сериализации
+        plot_dict = convert_to_serializable(plot_dict)
+        
+        return plot_dict
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"Error generating plot data: {e}\n{error_detail}")
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации графика: {str(e)}")
 
 
 @app.get("/api/students")
 async def get_students():
     """Список студентов."""
-    # TODO: Implement data loading from data_loader
-    return {
-        "students": []
-    }
+    try:
+        df = data_loader.load_data(use_cache=True)
+        students = data_loader.get_students_list(df)
+        
+        # Добавляем базовую статистику для каждого студента
+        students_with_stats = []
+        for student in students:
+            student_id = student.get('student_id')
+            student_stats = analytics.get_student_statistics(df, student_id)
+            students_with_stats.append({
+                "student_id": student.get('student_id'),
+                "student_name": student.get('student_name'),
+                "average_grade": student_stats.get('average_grade', 0.0),
+                "total_grades": student_stats.get('total_grades', 0)
+            })
+        
+        return {
+            "students": students_with_stats,
+            "total": len(students_with_stats)
+        }
+    except Exception as e:
+        logger.error(f"Error loading students: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки студентов: {str(e)}")
 
 
 @app.get("/api/grades")
 async def get_grades(
     student_id: Optional[int] = Query(None, description="Filter by student ID"),
-    subject: Optional[str] = Query(None, description="Filter by subject")
+    subject: Optional[str] = Query(None, description="Filter by subject"),
+    limit: Optional[int] = Query(None, description="Limit number of results")
 ):
     """Данные оценок."""
-    # TODO: Implement grades data loading
-    return {
-        "grades": [],
-        "student_id": student_id,
-        "subject": subject
-    }
+    try:
+        df = data_loader.load_data(use_cache=True)
+        filtered_df = data_loader.get_grades(df, student_id=student_id, subject=subject)
+        
+        # Ограничение количества результатов
+        if limit is not None and limit > 0:
+            filtered_df = filtered_df.head(limit)
+        
+        # Конвертируем в список словарей для JSON
+        grades_list = []
+        for _, row in filtered_df.iterrows():
+            grade_dict = row.to_dict()
+            # Преобразуем дату в строку
+            if 'date' in grade_dict and pd.notna(grade_dict['date']):
+                grade_dict['date'] = str(grade_dict['date'])
+            grades_list.append(grade_dict)
+        
+        return {
+            "grades": grades_list,
+            "total": len(grades_list),
+            "filters": {
+                "student_id": student_id,
+                "subject": subject
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error loading grades: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки оценок: {str(e)}")
+
+
+@app.get("/api/statistics")
+async def get_statistics(
+    student_id: Optional[int] = Query(None, description="Фильтр по ID студента"),
+    subject: Optional[str] = Query(None, description="Фильтр по предмету")
+):
+    """Общая статистика."""
+    try:
+        df = data_loader.load_data(use_cache=True)
+        
+        # Применяем фильтры
+        if student_id is not None:
+            df = df[df['student_id'] == student_id]
+        if subject is not None:
+            df = df[df['subject'].str.lower() == subject.lower()]
+        
+        stats = analytics.calculate_statistics(df)
+        
+        # Добавляем дополнительную информацию
+        if subject is None and 'subject' in df.columns:
+            stats['subject_comparison'] = analytics.get_subject_comparison(df)
+        
+        return stats
+    except Exception as e:
+        logger.error(f"Error calculating statistics: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка вычисления статистики: {str(e)}")
+
+
+@app.get("/api/students/{student_id}/statistics")
+async def get_student_statistics(student_id: int):
+    """Статистика по конкретному студенту."""
+    try:
+        df = data_loader.load_data(use_cache=True)
+        stats = analytics.get_student_statistics(df, student_id)
+        
+        if stats.get('total_grades') == 0:
+            raise HTTPException(status_code=404, detail=f"Студент с ID {student_id} не найден")
+        
+        # Добавляем динамику успеваемости
+        trend = analytics.get_performance_trend(df, student_id=student_id)
+        stats['trend'] = trend.to_dict('records') if not trend.empty else []
+        
+        return stats
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calculating student statistics: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка вычисления статистики студента: {str(e)}")
+
+
+@app.get("/api/subjects")
+async def get_subjects():
+    """Список предметов с статистикой."""
+    try:
+        df = data_loader.load_data(use_cache=True)
+        
+        if df.empty or 'subject' not in df.columns:
+            return {"subjects": []}
+        
+        subjects = df['subject'].unique().tolist()
+        subjects_with_stats = []
+        
+        for subject in subjects:
+            stats = analytics.get_subject_statistics(df, subject)
+            subjects_with_stats.append(stats)
+        
+        return {
+            "subjects": subjects_with_stats,
+            "total": len(subjects_with_stats)
+        }
+    except Exception as e:
+        logger.error(f"Error loading subjects: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки предметов: {str(e)}")

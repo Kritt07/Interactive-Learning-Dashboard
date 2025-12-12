@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивный дашборд успеваемости студентов</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📊 Дашборд успеваемости студентов</h1>
+            <p class="subtitle">Интерактивная визуализация данных об оценках</p>
+        </header>
+
+        <!-- Filters Section -->
+        <section class="filters-section">
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="studentFilter">Студент:</label>
+                    <select id="studentFilter">
+                        <option value="">Все студенты</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="subjectFilter">Предмет:</label>
+                    <select id="subjectFilter">
+                        <option value="">Все предметы</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="plotTypeFilter">Тип графика:</label>
+                    <select id="plotTypeFilter">
+                        <option value="dashboard">Дашборд (все графики)</option>
+                        <option value="distribution">Распределение оценок</option>
+                        <option value="trend">Динамика успеваемости</option>
+                        <option value="comparison">Сравнение</option>
+                        <option value="heatmap">Тепловая карта</option>
+                        <option value="box">Box-plot по предметам</option>
+                    </select>
+                </div>
+                <button id="refreshBtn" class="btn-primary">Обновить данные</button>
+            </div>
+        </section>
+
+        <!-- Statistics Cards -->
+        <section class="stats-section">
+            <div class="stats-grid" id="statsGrid">
+                <!-- Статистика будет добавлена через JS -->
+            </div>
+        </section>
+
+        <!-- Plots Section -->
+        <section class="plots-section">
+            <div id="plotsContainer" class="plots-container">
+                <!-- Графики будут добавлены через JS -->
+            </div>
+        </section>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Загрузка данных...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
