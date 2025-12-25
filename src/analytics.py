@@ -41,9 +41,14 @@ def calculate_statistics(df: pd.DataFrame) -> Dict:
     }
     
     if 'date' in df.columns:
+        # Преобразуем даты в datetime, если они еще не в этом формате
+        date_series = pd.to_datetime(df['date'], errors='coerce')
+        min_date = date_series.min()
+        max_date = date_series.max()
+        
         stats["date_range"] = {
-            "start": df['date'].min().isoformat() if pd.notna(df['date'].min()) else None,
-            "end": df['date'].max().isoformat() if pd.notna(df['date'].max()) else None
+            "start": min_date.isoformat() if pd.notna(min_date) else None,
+            "end": max_date.isoformat() if pd.notna(max_date) else None
         }
     else:
         stats["date_range"] = None

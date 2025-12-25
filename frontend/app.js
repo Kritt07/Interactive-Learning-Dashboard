@@ -200,12 +200,15 @@ function renderPlots(plotData) {
             'subject_comparison': 'Сравнение по предметам',
             'student_comparison': 'Сравнение студентов',
             'subject_heatmap': 'Тепловая карта по предметам',
-            'box_plot': 'Violin-plot по предметам',
             'scatter_trend': 'Корреляция времени и оценок'
         };
 
         let plotIndex = 0;
         for (const [key, plot] of Object.entries(plotData)) {
+            // Пропускаем box_plot, так как он удален из дашборда
+            if (key === 'box_plot') {
+                continue;
+            }
             // Проверяем, что график валидный и содержит данные
             if (plot && plot.data && plot.layout && Array.isArray(plot.data)) {
                 // Проверяем, есть ли хотя бы один trace с данными
@@ -235,7 +238,9 @@ function renderPlots(plotData) {
                         const plotId = `plot-${plotIndex}`;
                         const graphContainer = document.createElement('div');
                         graphContainer.id = plotId;
+                        graphContainer.style.width = '100%';
                         graphContainer.style.minHeight = '400px';
+                        graphContainer.style.height = '450px';
                         plotDiv.appendChild(graphContainer);
                         
                         container.appendChild(plotDiv);
@@ -243,13 +248,19 @@ function renderPlots(plotData) {
                         Plotly.newPlot(plotId, plot.data, plot.layout, {
                             responsive: true,
                             displayModeBar: true,
-                            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+                            modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
+                            useResizeHandler: true
                         });
                         
                         // Принудительно изменяем размер после рендеринга для корректной адаптации
                         setTimeout(() => {
                             Plotly.Plots.resize(plotId);
                         }, 100);
+                        
+                        // Дополнительный resize после полной загрузки
+                        setTimeout(() => {
+                            Plotly.Plots.resize(plotId);
+                        }, 300);
 
                         plotIndex++;
                     } catch (plotError) {
@@ -313,20 +324,28 @@ function renderPlots(plotData) {
                 const plotId = 'plot-main';
                 const graphContainer = document.createElement('div');
                 graphContainer.id = plotId;
+                graphContainer.style.width = '100%';
                 graphContainer.style.minHeight = '400px';
+                graphContainer.style.height = '450px';
                 plotDiv.appendChild(graphContainer);
                 container.appendChild(plotDiv);
 
                 Plotly.newPlot(plotId, plotData.data, plotData.layout, {
                     responsive: true,
                     displayModeBar: true,
-                    modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
+                    useResizeHandler: true
                 });
                 
                 // Принудительно изменяем размер после рендеринга для корректной адаптации
                 setTimeout(() => {
                     Plotly.Plots.resize(plotId);
                 }, 100);
+                
+                // Дополнительный resize после полной загрузки
+                setTimeout(() => {
+                    Plotly.Plots.resize(plotId);
+                }, 300);
             } catch (plotError) {
                 console.error('Ошибка рендеринга графика:', plotError);
                 container.innerHTML = `<p class="no-data">Ошибка при отображении графика: ${plotError.message}</p>`;

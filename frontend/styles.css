@@ -195,6 +195,14 @@ body {
     padding: 20px;
     border-radius: 10px;
     box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-height: 450px;
+}
+
+.plot-item > div[id^="plot-"] {
+    flex: 1;
+    width: 100%;
     min-height: 400px;
 }
 
@@ -303,6 +311,7 @@ body {
 
     .plots-container {
         grid-template-columns: 1fr;
+        gap: 20px;
     }
 
     .stats-grid {
@@ -329,12 +338,23 @@ body {
 
     .plot-item {
         padding: 15px;
+        min-height: 350px;
+    }
+    
+    .plot-item > div[id^="plot-"] {
         min-height: 300px;
+        height: 350px;
     }
 }
 
 /* Улучшение стилей для Plotly графиков */
 .plot-item .js-plotly-plot {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 400px;
+}
+
+.plot-item .plotly {
     width: 100% !important;
     height: 100% !important;
 }

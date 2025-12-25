@@ -272,6 +272,7 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
                                   subject: Optional[str] = None) -> Dict:
     """
     Создаёт современный график динамики успеваемости с областями доверия.
+    Автоматически масштабируется под доступные данные.
     
     Args:
         df: DataFrame с данными об оценках
@@ -282,13 +283,14 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
         Словарь с данными для Plotly
     """
     try:
+        # Проверка входных данных
         if df.empty or 'date' not in df.columns or 'grade' not in df.columns:
             logger.warning("Нет данных для графика динамики успеваемости")
             return {"data": [], "layout": {"title": "Динамика успеваемости"}}
         
         filtered_df = df.copy()
         
-        # Применяем фильтры
+        # Применяем фильтры по студенту
         if student_id is not None:
             try:
                 student_id_int = int(student_id)
@@ -298,6 +300,7 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
             except (ValueError, TypeError):
                 logger.warning(f"Некорректный student_id: {student_id}")
         
+        # Применяем фильтры по предмету
         if subject is not None and subject.strip():
             if 'subject' in filtered_df.columns:
                 filtered_df = filtered_df[filtered_df['subject'].str.lower() == subject.lower().strip()]
@@ -314,6 +317,7 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
             logger.warning("Нет валидных дат для графика динамики")
             return {"data": [], "layout": {"title": "Динамика успеваемости"}}
         
+        # Сортируем по дате и создаем периоды
         filtered_df = filtered_df.sort_values('date')
         filtered_df['year_month'] = filtered_df['date'].dt.to_period('M')
         
@@ -322,28 +326,56 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
             'mean', 'median', 'std', 'count', 'min', 'max'
         ]).reset_index()
         
-        monthly_stats = monthly_stats[monthly_stats['count'] >= 2]
+        # Фильтруем месяцы с достаточным количеством данных (минимум 1 оценка)
+        monthly_stats = monthly_stats[monthly_stats['count'] >= 1]
         
         if monthly_stats.empty:
-            logger.warning("Нет месяцев с достаточным количеством данных")
+            logger.warning("Нет месяцев с данными")
             return {"data": [], "layout": {"title": "Динамика успеваемости - Недостаточно данных"}}
         
+        # Сортируем по периоду
+        monthly_stats = monthly_stats.sort_values('year_month')
+        
+        # Адаптивный выбор периода: если данных больше 12 месяцев, показываем последние 12
+        max_months_to_show = 12
+        if len(monthly_stats) > max_months_to_show:
+            monthly_stats = monthly_stats.tail(max_months_to_show).copy()
+            logger.info(f"Ограничен период до последних {max_months_to_show} месяцев для лучшей читаемости графика")
+        
+        # Создаем строковые метки для месяцев
         monthly_stats['month_str'] = monthly_stats['year_month'].apply(
             lambda x: x.strftime('%b %Y') if pd.notna(x) else str(x)
         )
-        monthly_stats = monthly_stats.sort_values('year_month')
         
         # Заполняем NaN в std
         monthly_stats['std'] = monthly_stats['std'].fillna(0)
         
+        # Проверяем, что есть данные для отображения
+        if len(monthly_stats) == 0:
+            logger.warning("Нет данных для отображения на графике")
+            return {"data": [], "layout": {"title": "Динамика успеваемости - Нет данных"}}
+        
+        # Получаем список месяцев для оси X
+        month_labels = monthly_stats['month_str'].tolist()
+        
+        # Проверяем, что все значения валидны
+        if monthly_stats['mean'].isna().any() or monthly_stats['median'].isna().any():
+            logger.warning("Обнаружены NaN значения в данных")
+            monthly_stats = monthly_stats.dropna(subset=['mean', 'median'])
+            if monthly_stats.empty:
+                return {"data": [], "layout": {"title": "Динамика успеваемости - Нет валидных данных"}}
+            month_labels = monthly_stats['month_str'].tolist()
+        
+        logger.info(f"Создание графика с {len(monthly_stats)} точками данных")
+        
         fig = go.Figure()
         
-        # Область доверия (std)
-        upper_bound = monthly_stats['mean'] + monthly_stats['std']
-        lower_bound = monthly_stats['mean'] - monthly_stats['std']
+        # Область доверия (std) - преобразуем в списки Python
+        upper_bound = (monthly_stats['mean'] + monthly_stats['std']).tolist()
+        lower_bound = (monthly_stats['mean'] - monthly_stats['std']).tolist()
         
         fig.add_trace(go.Scatter(
-            x=monthly_stats['month_str'],
+            x=month_labels,
             y=upper_bound,
             mode='lines',
             name='+1σ',
@@ -353,7 +385,7 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
         ))
         
         fig.add_trace(go.Scatter(
-            x=monthly_stats['month_str'],
+            x=month_labels,
             y=lower_bound,
             mode='lines',
             name='Область доверия',
@@ -363,22 +395,27 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
             hovertemplate='Период: %{x}<br>Нижняя граница: %{y:.2f}<extra></extra>'
         ))
         
-        # Основная линия (среднее)
+        # Основная линия (среднее) - преобразуем в список Python
+        mean_values = monthly_stats['mean'].tolist()
+        count_values = monthly_stats['count'].tolist()
+        
         fig.add_trace(go.Scatter(
-            x=monthly_stats['month_str'],
-            y=monthly_stats['mean'],
+            x=month_labels,
+            y=mean_values,
             mode='lines+markers',
             name='Средняя оценка',
             line=dict(color=COLORS['primary'], width=3),
             marker=dict(size=10, color=COLORS['primary'], line=dict(width=2, color='white')),
             hovertemplate='Период: %{x}<br>Средняя оценка: %{y:.2f}<br>Количество: %{customdata}<extra></extra>',
-            customdata=monthly_stats['count']
+            customdata=count_values
         ))
         
-        # Линия медианы
+        # Линия медианы - преобразуем в список Python
+        median_values = monthly_stats['median'].tolist()
+        
         fig.add_trace(go.Scatter(
-            x=monthly_stats['month_str'],
-            y=monthly_stats['median'],
+            x=month_labels,
+            y=median_values,
             mode='lines',
             name='Медианная оценка',
             line=dict(color=COLORS['success'], width=2, dash='dash'),
@@ -387,23 +424,25 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
         
         # Трендовая линия (линейная регрессия)
         try:
-            x_numeric = np.arange(len(monthly_stats))
-            slope, intercept, r_value, p_value, std_err = stats.linregress(
-                x_numeric, monthly_stats['mean']
-            )
-            trend_line = slope * x_numeric + intercept
-            
-            fig.add_trace(go.Scatter(
-                x=monthly_stats['month_str'],
-                y=trend_line,
-                mode='lines',
-                name=f'Тренд (R²={r_value**2:.3f})',
-                line=dict(color=COLORS['danger'], width=2, dash='dot'),
-                hovertemplate='Период: %{x}<br>Тренд: %{y:.2f}<extra></extra>'
-            ))
+            if len(monthly_stats) >= 2:
+                x_numeric = np.arange(len(monthly_stats))
+                slope, intercept, r_value, p_value, std_err = stats.linregress(
+                    x_numeric, monthly_stats['mean']
+                )
+                trend_line = (slope * x_numeric + intercept).tolist()
+                
+                fig.add_trace(go.Scatter(
+                    x=month_labels,
+                    y=trend_line,
+                    mode='lines',
+                    name=f'Тренд (R²={r_value**2:.3f})',
+                    line=dict(color=COLORS['danger'], width=2, dash='dot'),
+                    hovertemplate='Период: %{x}<br>Тренд: %{y:.2f}<extra></extra>'
+                ))
         except Exception as e:
             logger.warning(f"Не удалось построить трендовую линию: {e}")
         
+        # Формируем заголовок
         title = "Динамика успеваемости"
         if student_id is not None:
             if not filtered_df.empty and 'student_name' in filtered_df.columns:
@@ -417,10 +456,13 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
         if subject is not None and subject.strip():
             title += f" - {subject}"
         
+        # Вычисляем диапазон для оси Y
         min_grade = monthly_stats['mean'].min()
         max_grade = monthly_stats['mean'].max()
-        y_range_padding = (max_grade - min_grade) * 0.2 if max_grade != min_grade else 0.5
+        grade_range = max_grade - min_grade
+        y_range_padding = grade_range * 0.2 if grade_range > 0 else 0.5
         
+        # Настройка layout с правильным автомасштабированием
         fig.update_layout(
             title={
                 'text': title,
@@ -429,26 +471,46 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
                 'font': {'size': 18, 'color': COLORS['dark']}
             },
             xaxis_title="Период",
-            yaxis_title="Оценка",
             template="plotly_white",
             hovermode='x unified',
-            xaxis=dict(tickangle=-45),
+            xaxis=dict(
+                type='category',
+                categoryorder='array',
+                categoryarray=month_labels,
+                tickangle=-45
+            ),
             yaxis=dict(
+                title=dict(
+                    text="Оценка",
+                    font=dict(size=12, color=COLORS['dark'])
+                ),
                 range=[max(0, min_grade - y_range_padding), min(5, max_grade + y_range_padding)],
-                dtick=0.5
+                dtick=0.5,
+                autorange=False,
+                showgrid=True,
+                gridcolor='rgba(0,0,0,0.1)',
+                gridwidth=1,
+                showline=True,
+                linecolor='rgba(0,0,0,0.3)',
+                linewidth=1,
+                zeroline=False,
+                tickmode='linear',
+                tick0=0,
+                tickfont=dict(size=10, color=COLORS['dark']),
+                side='left'
             ),
             legend=dict(
-                x=0.98,  # Внутри графика
-                y=0.98,  # Сверху
-                xanchor='right',  # Привязка справа
+                x=0.98,
+                y=0.98,
+                xanchor='right',
                 yanchor='top',
                 bgcolor='rgba(255,255,255,0.95)',
                 bordercolor=COLORS['light'],
                 borderwidth=1,
                 font=dict(size=9)
             ),
-            height=500,
-            margin=dict(l=70, r=80, t=70, b=70),  # Увеличен правый отступ
+            autosize=True,
+            margin=dict(l=70, r=80, t=70, b=100),  # Увеличен нижний отступ для наклонных меток
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -532,7 +594,7 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
             hovermode='x unified',
             xaxis=dict(tickangle=-45),
             yaxis=dict(range=[0, 5.5], dtick=0.5),
-            height=500,
+            autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=80, t=70, b=100),  # Увеличен нижний отступ для повернутых меток
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
@@ -617,7 +679,7 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
             template="plotly_white",
             hovermode='y unified',
             xaxis=dict(range=[0, 5.5], dtick=0.5),
-            height=max(400, len(student_avg) * 40),
+            autosize=True,  # Адаптивный размер
             margin=dict(l=100, r=100, t=70, b=70),  # Увеличены отступы для длинных имен
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
@@ -745,7 +807,7 @@ def create_subject_heatmap(df: pd.DataFrame, student_id: Optional[int] = None) -
                 xaxis_title="Период",
                 yaxis_title="Предмет",
                 template="plotly_white",
-                height=500,
+                autosize=True,  # Адаптивный размер
                 margin=dict(l=100, r=100, t=70, b=100),  # Отступы для colorbar и меток
                 font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
                 plot_bgcolor='white',
@@ -832,7 +894,7 @@ def create_box_plot_by_subject(df: pd.DataFrame) -> Dict:
             hovermode='x unified',
             showlegend=False,
             yaxis=dict(range=[0, 5.5], dtick=0.5),
-            height=500,
+            autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=80, t=70, b=100),  # Отступы для повернутых меток
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
@@ -943,7 +1005,7 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
             template="plotly_white",
             hovermode='closest',
             yaxis=dict(range=[0, 5.5], dtick=0.5),
-            height=500,
+            autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=100, t=70, b=70),  # Увеличен правый отступ для colorbar
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
@@ -975,7 +1037,6 @@ def create_dashboard_plots(df: pd.DataFrame, student_id: Optional[int] = None,
         "subject_comparison": create_subject_comparison_plot(df),
         "student_comparison": create_student_comparison_plot(df, subject=subject),
         "subject_heatmap": create_subject_heatmap(df, student_id=student_id),
-        "box_plot": create_box_plot_by_subject(df),
         "scatter_trend": create_scatter_trend_plot(df, subject=subject)
     }
     
