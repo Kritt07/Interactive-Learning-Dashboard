@@ -550,10 +550,15 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
         # Столбчатая диаграмма с ошибками
         colors = px.colors.qualitative.Set3[:len(subject_stats)]
         
+        # Вертикальные столбцы: предметы на оси X, оценки на оси Y
+        # Высота столбцов напрямую соответствует средним оценкам по предмету
+        mean_values = subject_stats['mean'].tolist()  # Преобразуем в список для точной передачи значений
+        
         fig.add_trace(go.Bar(
-            x=subject_stats['subject'],
-            y=subject_stats['mean'],
+            x=subject_stats['subject'].tolist(),  # Предметы на горизонтальной оси X
+            y=mean_values,  # Средние оценки на вертикальной оси Y - высота столбца = значение оценки
             name="Средняя оценка",
+            orientation='v',  # Явно указываем вертикальную ориентацию
             marker_color=COLORS['primary'],
             marker_line_color='white',
             marker_line_width=2,
@@ -564,7 +569,7 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
                 color=COLORS['dark'],
                 thickness=2
             ),
-            text=subject_stats['mean'].round(2),
+            text=[f"{val:.2f}" for val in mean_values],  # Форматирование с 2 знаками после запятой - соответствует высоте столбца
             textposition='auto',  # Автоматическое позиционирование
             textfont=dict(size=10, color=COLORS['dark']),
             hovertemplate='Предмет: %{x}<br>Средняя оценка: %{y:.2f}<br>Ст. отклонение: %{customdata[0]:.2f}<br>Количество: %{customdata[1]}<extra></extra>',
@@ -581,6 +586,27 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
             annotation_position="right"
         )
         
+        # Определяем диапазон для оси Y на основе реальных средних оценок
+        # Высота столбцов напрямую соответствует значениям subject_stats['mean']
+        max_grade = float(subject_stats['mean'].max())
+        min_grade = float(subject_stats['mean'].min())
+        
+        # Вычисляем диапазон с небольшим запасом для визуализации
+        # Но не ограничиваем максимальное значение, чтобы не искажать пропорции
+        grade_range = max_grade - min_grade
+        if grade_range < 0.5:
+            # Если разброс маленький, добавляем запас сверху и снизу
+            y_min = max(0, min_grade - 0.3)
+            y_max = min(5.5, max_grade + 0.3)
+        else:
+            # Если разброс нормальный, добавляем стандартный запас
+            y_min = max(0, min_grade - 0.5)
+            y_max = min(5.5, max_grade + 0.5)
+        
+        # Округляем до 0.5 для красивого отображения
+        y_min = max(0, (y_min // 0.5) * 0.5)
+        y_max = ((y_max // 0.5) + 1) * 0.5
+        
         fig.update_layout(
             title={
                 'text': 'Сравнение средних оценок по предметам',
@@ -593,7 +619,15 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
             template="plotly_white",
             hovermode='x unified',
             xaxis=dict(tickangle=-45),
-            yaxis=dict(range=[0, 5.5], dtick=0.5),
+            yaxis=dict(
+                range=[y_min, y_max],  # Диапазон напрямую соответствует данным
+                dtick=0.5,  # Шаг 0.5
+                tickformat='.1f',  # Форматирование с 1 знаком после запятой для оси Y
+                showgrid=True,
+                gridcolor='lightgray',
+                gridwidth=1,
+                fixedrange=False  # Разрешаем масштабирование, но не искажаем данные
+            ),
             autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=80, t=70, b=100),  # Увеличен нижний отступ для повернутых меток
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
@@ -656,7 +690,7 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
             ),
             marker_line_color='white',
             marker_line_width=2,
-            text=student_avg['mean'].round(2),
+            text=[f"{val:.2f}" for val in student_avg['mean']],  # Форматирование с 2 знаками после запятой
             textposition='auto',  # Автоматическое позиционирование
             textfont=dict(size=10, color=COLORS['dark']),
             hovertemplate='Студент: %{y}<br>Средняя оценка: %{x:.2f}<br>Количество: %{customdata[0]}<br>Ст. отклонение: %{customdata[1]:.2f}<extra></extra>',
