@@ -1,10 +1,12 @@
 # Backend
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
+httpx>=0.24.0  # Required for TestClient
 
 # Data processing
 pandas>=2.1.0
 numpy>=1.23.0
+scipy>=1.10.0  # For statistical functions (KDE, regression)
 openpyxl>=3.0.0  # For Excel file reading
 
 # Visualizations

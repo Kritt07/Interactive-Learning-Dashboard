@@ -22,6 +22,25 @@ function setupEventListeners() {
     document.getElementById('subjectFilter').addEventListener('change', handleFilterChange);
     document.getElementById('plotTypeFilter').addEventListener('change', handleFilterChange);
     document.getElementById('refreshBtn').addEventListener('click', handleRefresh);
+    
+    // Обработчик изменения размера окна для адаптации графиков
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            // Находим все контейнеры графиков и перерисовываем их
+            document.querySelectorAll('.plot-item [id^="plot-"]').forEach(plotDiv => {
+                if (plotDiv.id) {
+                    Plotly.Plots.resize(plotDiv.id);
+                }
+            });
+            // Также проверяем основной график
+            const mainPlot = document.getElementById('plot-main');
+            if (mainPlot) {
+                Plotly.Plots.resize('plot-main');
+            }
+        }, 150); // Небольшая задержка для оптимизации
+    });
 }
 
 // Обработка изменения фильтров
@@ -181,66 +200,145 @@ function renderPlots(plotData) {
             'subject_comparison': 'Сравнение по предметам',
             'student_comparison': 'Сравнение студентов',
             'subject_heatmap': 'Тепловая карта по предметам',
-            'box_plot': 'Box-plot по предметам'
+            'box_plot': 'Violin-plot по предметам',
+            'scatter_trend': 'Корреляция времени и оценок'
         };
 
         let plotIndex = 0;
         for (const [key, plot] of Object.entries(plotData)) {
             // Проверяем, что график валидный и содержит данные
-            if (plot && plot.data && plot.layout && Array.isArray(plot.data) && plot.data.length > 0) {
-                try {
-                    const plotDiv = document.createElement('div');
-                    plotDiv.className = 'plot-item';
-                    
-                    // Добавляем заголовок
-                    const title = document.createElement('h3');
-                    title.className = 'plot-title';
-                    title.textContent = plotNames[key] || key;
-                    plotDiv.appendChild(title);
-                    
-                    // Добавляем контейнер для графика с уникальным ID
-                    const plotId = `plot-${plotIndex}`;
-                    const graphContainer = document.createElement('div');
-                    graphContainer.id = plotId;
-                    plotDiv.appendChild(graphContainer);
-                    
-                    container.appendChild(plotDiv);
+            if (plot && plot.data && plot.layout && Array.isArray(plot.data)) {
+                // Проверяем, есть ли хотя бы один trace с данными
+                const hasData = plot.data.some(trace => {
+                    if (trace && (trace.x || trace.y || trace.z || trace.values)) {
+                        const xLen = Array.isArray(trace.x) ? trace.x.length : 0;
+                        const yLen = Array.isArray(trace.y) ? trace.y.length : 0;
+                        const zLen = Array.isArray(trace.z) ? trace.z.length : 0;
+                        const valuesLen = Array.isArray(trace.values) ? trace.values.length : 0;
+                        return xLen > 0 || yLen > 0 || zLen > 0 || valuesLen > 0;
+                    }
+                    return false;
+                });
+                
+                if (hasData || plot.data.length > 0) {
+                    try {
+                        const plotDiv = document.createElement('div');
+                        plotDiv.className = 'plot-item';
+                        
+                        // Добавляем заголовок
+                        const title = document.createElement('h3');
+                        title.className = 'plot-title';
+                        title.textContent = plotNames[key] || key;
+                        plotDiv.appendChild(title);
+                        
+                        // Добавляем контейнер для графика с уникальным ID
+                        const plotId = `plot-${plotIndex}`;
+                        const graphContainer = document.createElement('div');
+                        graphContainer.id = plotId;
+                        graphContainer.style.minHeight = '400px';
+                        plotDiv.appendChild(graphContainer);
+                        
+                        container.appendChild(plotDiv);
 
-                    Plotly.newPlot(plotId, plot.data, plot.layout, {
-                        responsive: true,
-                        displayModeBar: true,
-                        modeBarButtonsToRemove: ['pan2d', 'lasso2d']
-                    });
+                        Plotly.newPlot(plotId, plot.data, plot.layout, {
+                            responsive: true,
+                            displayModeBar: true,
+                            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+                        });
+                        
+                        // Принудительно изменяем размер после рендеринга для корректной адаптации
+                        setTimeout(() => {
+                            Plotly.Plots.resize(plotId);
+                        }, 100);
 
-                    plotIndex++;
-                } catch (plotError) {
-                    console.error(`Ошибка рендеринга графика ${key}:`, plotError);
+                        plotIndex++;
+                    } catch (plotError) {
+                        console.error(`Ошибка рендеринга графика ${key}:`, plotError);
+                        // Показываем сообщение об ошибке
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'plot-item';
+                        errorDiv.innerHTML = `<h3 class="plot-title">${plotNames[key] || key}</h3><p class="no-data">Ошибка отображения графика: ${plotError.message}</p>`;
+                        container.appendChild(errorDiv);
+                    }
+                } else {
+                    console.warn(`График ${key} не содержит данных:`, plot);
+                    // Показываем сообщение об отсутствии данных
+                    const noDataDiv = document.createElement('div');
+                    noDataDiv.className = 'plot-item';
+                    noDataDiv.innerHTML = `<h3 class="plot-title">${plotNames[key] || key}</h3><p class="no-data">Нет данных для отображения</p>`;
+                    container.appendChild(noDataDiv);
                 }
             } else {
-                console.warn(`График ${key} пропущен:`, plot);
+                console.warn(`График ${key} имеет некорректную структуру:`, plot);
+                // Показываем сообщение об ошибке структуры
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'plot-item';
+                errorDiv.innerHTML = `<h3 class="plot-title">${plotNames[key] || key}</h3><p class="no-data">Ошибка структуры данных графика</p>`;
+                container.appendChild(errorDiv);
             }
         }
 
         if (plotIndex === 0) {
             container.innerHTML = '<p class="no-data">Нет данных для отображения. Проверьте, что данные загружены в систему.</p>';
         }
-    } else if (plotData.data && plotData.layout && Array.isArray(plotData.data) && plotData.data.length > 0) {
+    } else if (plotData.data && plotData.layout && Array.isArray(plotData.data)) {
         // Одиночный график
-        try {
-            const plotDiv = document.createElement('div');
-            plotDiv.className = 'plot-item';
-            const plotId = 'plot-main';
-            plotDiv.id = plotId;
-            container.appendChild(plotDiv);
+        // Проверяем, есть ли хотя бы один trace с данными
+        const hasData = plotData.data.some(trace => {
+            if (trace && (trace.x || trace.y || trace.z || trace.values)) {
+                const xLen = Array.isArray(trace.x) ? trace.x.length : 0;
+                const yLen = Array.isArray(trace.y) ? trace.y.length : 0;
+                const zLen = Array.isArray(trace.z) ? trace.z.length : 0;
+                const valuesLen = Array.isArray(trace.values) ? trace.values.length : 0;
+                return xLen > 0 || yLen > 0 || zLen > 0 || valuesLen > 0;
+            }
+            return false;
+        });
+        
+        if (hasData && plotData.data.length > 0) {
+            try {
+                const plotDiv = document.createElement('div');
+                plotDiv.className = 'plot-item';
+                
+                // Добавляем заголовок из layout, если он есть
+                if (plotData.layout && plotData.layout.title) {
+                    const title = document.createElement('h3');
+                    title.className = 'plot-title';
+                    title.textContent = typeof plotData.layout.title === 'string' 
+                        ? plotData.layout.title 
+                        : (plotData.layout.title.text || 'График');
+                    plotDiv.appendChild(title);
+                }
+                
+                const plotId = 'plot-main';
+                const graphContainer = document.createElement('div');
+                graphContainer.id = plotId;
+                graphContainer.style.minHeight = '400px';
+                plotDiv.appendChild(graphContainer);
+                container.appendChild(plotDiv);
 
-            Plotly.newPlot(plotId, plotData.data, plotData.layout, {
-                responsive: true,
-                displayModeBar: true,
-                modeBarButtonsToRemove: ['pan2d', 'lasso2d']
-            });
-        } catch (plotError) {
-            console.error('Ошибка рендеринга графика:', plotError);
-            container.innerHTML = '<p class="no-data">Ошибка при отображении графика</p>';
+                Plotly.newPlot(plotId, plotData.data, plotData.layout, {
+                    responsive: true,
+                    displayModeBar: true,
+                    modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+                });
+                
+                // Принудительно изменяем размер после рендеринга для корректной адаптации
+                setTimeout(() => {
+                    Plotly.Plots.resize(plotId);
+                }, 100);
+            } catch (plotError) {
+                console.error('Ошибка рендеринга графика:', plotError);
+                container.innerHTML = `<p class="no-data">Ошибка при отображении графика: ${plotError.message}</p>`;
+            }
+        } else {
+            console.warn('График не содержит данных:', plotData);
+            const title = (plotData.layout && plotData.layout.title) 
+                ? (typeof plotData.layout.title === 'string' 
+                    ? plotData.layout.title 
+                    : (plotData.layout.title.text || 'График'))
+                : 'График';
+            container.innerHTML = `<div class="plot-item"><h3 class="plot-title">${title}</h3><p class="no-data">Нет данных для отображения</p></div>`;
         }
     } else {
         console.warn('Некорректные данные графика:', plotData);

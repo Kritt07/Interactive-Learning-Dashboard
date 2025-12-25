@@ -23,12 +23,32 @@ logger = logging.getLogger(__name__)
 
 def convert_to_serializable(obj):
     """Преобразует объекты в сериализуемый формат для JSON."""
+    # Проверка на NaN должна быть первой
+    try:
+        if pd.isna(obj):
+            return None
+    except (ValueError, TypeError):
+        pass
+    
+    # Проверка на float NaN
+    if isinstance(obj, float) and (obj != obj or obj == float('inf') or obj == float('-inf')):
+        if obj != obj:  # NaN
+            return None
+        elif obj == float('inf'):
+            return None  # или можно вернуть "Infinity"
+        elif obj == float('-inf'):
+            return None  # или можно вернуть "-Infinity"
+    
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
-        return float(obj)
+        val = float(obj)
+        # Проверяем на NaN после преобразования
+        if val != val:  # NaN
+            return None
+        return val
     elif isinstance(obj, (datetime, date)):
         return obj.isoformat()
     elif isinstance(obj, dict):
@@ -36,14 +56,11 @@ def convert_to_serializable(obj):
     elif isinstance(obj, list):
         return [convert_to_serializable(item) for item in obj]
     elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        # Дополнительная проверка для float
+        if isinstance(obj, float) and obj != obj:  # NaN
+            return None
         return obj
     else:
-        # Пытаемся преобразовать в строку, если это что-то еще
-        try:
-            if pd.isna(obj):
-                return None
-        except (ValueError, TypeError):
-            pass
         # Последняя попытка - преобразовать в строку
         return str(obj)
 
@@ -100,7 +117,7 @@ async def health_check():
 @app.get("/api/plot-data")
 async def get_plot_data(
     plot_type: Optional[str] = Query(None, description="Тип графика: distribution, trend, comparison, heatmap, box, dashboard"),
-    student_id: Optional[int] = Query(None, description="Фильтр по ID студента"),
+    student_id: Optional[str] = Query(None, description="Фильтр по ID студента"),
     subject: Optional[str] = Query(None, description="Фильтр по предмету")
 ):
     """Выдаёт данные для графиков."""
@@ -112,23 +129,32 @@ async def get_plot_data(
         
         plot_type = plot_type or "dashboard"
         
+        # Конвертируем student_id в int, если он передан
+        student_id_int = None
+        if student_id is not None:
+            try:
+                student_id_int = int(student_id)
+            except (ValueError, TypeError):
+                logger.warning(f"Некорректный student_id: {student_id}")
+                student_id_int = None
+        
         if plot_type == "distribution":
-            plot_dict = plots.create_grade_distribution_plot(df)
+            plot_dict = plots.create_grade_distribution_plot(df, student_id=student_id_int, subject=subject)
         elif plot_type == "trend":
-            plot_dict = plots.create_performance_trend_plot(df, student_id=student_id, subject=subject)
+            plot_dict = plots.create_performance_trend_plot(df, student_id=student_id_int, subject=subject)
         elif plot_type == "comparison":
-            if student_id is not None:
+            if student_id_int is not None:
                 plot_dict = plots.create_student_comparison_plot(df, subject=subject)
             else:
                 plot_dict = plots.create_subject_comparison_plot(df)
         elif plot_type == "heatmap":
-            plot_dict = plots.create_subject_heatmap(df, student_id=student_id)
+            plot_dict = plots.create_subject_heatmap(df, student_id=student_id_int)
         elif plot_type == "box":
             plot_dict = plots.create_box_plot_by_subject(df)
         elif plot_type == "dashboard":
-            plot_dict = plots.create_dashboard_plots(df)
+            plot_dict = plots.create_dashboard_plots(df, student_id=student_id_int, subject=subject)
         else:
-            plot_dict = plots.create_dashboard_plots(df)
+            plot_dict = plots.create_dashboard_plots(df, student_id=student_id_int, subject=subject)
         
         # Преобразуем все numpy типы в стандартные Python типы для сериализации
         plot_dict = convert_to_serializable(plot_dict)
@@ -188,12 +214,14 @@ async def get_grades(
         grades_list = []
         for _, row in filtered_df.iterrows():
             grade_dict = row.to_dict()
-            # Преобразуем дату в строку
+            # Преобразуем дату в строку и обрабатываем NaN
             if 'date' in grade_dict and pd.notna(grade_dict['date']):
                 grade_dict['date'] = str(grade_dict['date'])
+            # Преобразуем все значения для JSON-совместимости
+            grade_dict = convert_to_serializable(grade_dict)
             grades_list.append(grade_dict)
         
-        return {
+        result = {
             "grades": grades_list,
             "total": len(grades_list),
             "filters": {
@@ -201,6 +229,9 @@ async def get_grades(
                 "subject": subject
             }
         }
+        
+        # Дополнительная обработка всего результата
+        return convert_to_serializable(result)
     except Exception as e:
         logger.error(f"Error loading grades: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки оценок: {str(e)}")
@@ -245,7 +276,14 @@ async def get_student_statistics(student_id: int):
         
         # Добавляем динамику успеваемости
         trend = analytics.get_performance_trend(df, student_id=student_id)
-        stats['trend'] = trend.to_dict('records') if not trend.empty else []
+        if not trend.empty:
+            trend_list = trend.to_dict('records')
+            stats['trend'] = convert_to_serializable(trend_list)
+        else:
+            stats['trend'] = []
+        
+        # Преобразуем статистику для JSON-совместимости (включая NaN)
+        stats = convert_to_serializable(stats)
         
         return stats
     except HTTPException:
