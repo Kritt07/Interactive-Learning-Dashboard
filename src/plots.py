@@ -613,32 +613,75 @@ def create_subject_comparison_plot(df: pd.DataFrame, student_id: Optional[int] =
             annotation_position="right"
         )
         
-        # Определяем диапазон для оси Y на основе реальных средних оценок
-        # Высота столбцов напрямую соответствует значениям subject_stats['mean']
+        # Вычисляем диапазон данных для максимальной наглядности
+        # Используем только средние значения для определения границ столбцов
+        # (ошибки std отображаются как линии, они не должны влиять на масштаб)
         max_grade = float(subject_stats['mean'].max())
         min_grade = float(subject_stats['mean'].min())
         
-        # Вычисляем диапазон с небольшим запасом для визуализации
-        # Но не ограничиваем максимальное значение, чтобы не искажать пропорции
-        grade_range = max_grade - min_grade
-        if grade_range < 0.5:
-            # Если разброс маленький, добавляем запас сверху и снизу
-            y_min = max(0, min_grade - 0.3)
-            y_max = min(5.5, max_grade + 0.3)
-        else:
-            # Если разброс нормальный, добавляем стандартный запас
-            y_min = max(0, min_grade - 0.5)
-            y_max = min(5.5, max_grade + 0.5)
+        # Вычисляем диапазон данных
+        data_range = max_grade - min_grade
         
-        # Округляем до 0.5 для красивого отображения
-        y_min = max(0, (y_min // 0.5) * 0.5)
-        y_max = ((y_max // 0.5) + 1) * 0.5
+        # Для максимальной наглядности: минимальные отступы
+        # Меньший столбец должен быть у самого низа, больший - почти у потолка
+        # Нижний отступ должен быть достаточным, чтобы минимальный столбец был виден хотя бы на пару шагов по оси Y
+        if data_range > 0:
+            # Адаптивный нижний отступ: 15% от диапазона или минимум для видимости столбца (увеличен в 3 раза)
+            # Это гарантирует, что минимальный столбец будет виден хотя бы на пару шагов по оси Y
+            padding_bottom = max(data_range * 0.15, 0.6)  # Увеличенный в 3 раза отступ снизу для видимости
+            padding_top = max(data_range * 0.02, 0.1)  # Очень маленький отступ сверху
+        else:
+            # Если все значения одинаковые, добавляем небольшой отступ для визуализации
+            padding_bottom = 0.6
+            padding_top = 0.1
+        
+        # Вычисляем финальный диапазон оси Y для максимальной наглядности
+        # Минимум с достаточным отступом, чтобы минимальный столбец был виден
+        y_min = max(0, min_grade - padding_bottom)
+        # Максимум очень близко к максимальному значению (почти касается потолка)
+        y_max = max_grade + padding_top
+        
+        # Адаптивное вычисление оптимального количества меток на основе диапазона
+        # Для маленьких диапазонов (1-5) используем меньше меток, для больших (0-100) - больше
+        if data_range <= 5:
+            # Маленький диапазон (например, оценки от 1 до 5)
+            optimal_nticks = max(4, min(6, int(data_range * 1.5) + 2))
+        elif data_range <= 20:
+            # Средний диапазон (например, оценки от 0 до 20)
+            optimal_nticks = max(5, min(8, int(data_range / 3) + 3))
+        elif data_range <= 50:
+            # Большой диапазон (например, баллы от 0 до 50)
+            optimal_nticks = max(6, min(10, int(data_range / 8) + 4))
+        else:
+            # Очень большой диапазон (например, баллы от 0 до 100)
+            optimal_nticks = max(6, min(12, int(data_range / 12) + 5))
         
         # Формируем заголовок в зависимости от того, выбран ли конкретный студент
         if student_name:
             title_text = f'Сравнение средних оценок по предметам - {student_name}'
         else:
             title_text = 'Сравнение средних оценок по предметам'
+        
+        # Настройка оси Y с вычисленным диапазоном для максимизации визуальной разницы
+        yaxis_config = dict(
+            title=dict(
+                text="Средняя оценка",
+                font=dict(size=12, color=COLORS['dark'])
+            ),
+            range=[y_min, y_max],  # Явно задаем диапазон для максимизации разницы
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)',
+            gridwidth=1,
+            showline=True,
+            linecolor='rgba(0,0,0,0.3)',
+            linewidth=1,
+            zeroline=False,
+            tickmode='auto',  # Автоматический режим - Plotly сам выберет метки
+            nticks=optimal_nticks,  # Адаптивное ограничение количества меток
+            tickfont=dict(size=10, color=COLORS['dark']),
+            side='left',
+            rangemode='normal'  # Нормальный режим масштабирования (не принудительно от 0)
+        )
         
         fig.update_layout(
             title={
@@ -648,19 +691,10 @@ def create_subject_comparison_plot(df: pd.DataFrame, student_id: Optional[int] =
                 'font': {'size': 18, 'color': COLORS['dark']}
             },
             xaxis_title="Предмет",
-            yaxis_title="Средняя оценка",
             template="plotly_white",
             hovermode='x unified',
             xaxis=dict(tickangle=-45),
-            yaxis=dict(
-                range=[y_min, y_max],  # Диапазон напрямую соответствует данным
-                dtick=0.5,  # Шаг 0.5
-                tickformat='.1f',  # Форматирование с 1 знаком после запятой для оси Y
-                showgrid=True,
-                gridcolor='lightgray',
-                gridwidth=1,
-                fixedrange=False  # Разрешаем масштабирование, но не искажаем данные
-            ),
+            yaxis=yaxis_config,
             autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=80, t=70, b=100),  # Увеличен нижний отступ для повернутых меток
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
@@ -734,11 +768,75 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
             customdata=list(zip(count_values, std_values))
         ))
         
+        # Вычисляем диапазон данных для максимальной наглядности
+        # Используем только средние значения для определения границ столбцов
+        # (ошибки std отображаются как линии, они не должны влиять на масштаб)
+        max_grade = float(max(mean_values)) if mean_values else 0
+        min_grade = float(min(mean_values)) if mean_values else 0
+        
+        # Вычисляем диапазон данных
+        data_range = max_grade - min_grade
+        
+        # Для максимальной наглядности: минимальные отступы
+        # Меньший столбец должен быть у самого низа, больший - почти у потолка
+        # Нижний отступ должен быть достаточным, чтобы минимальный столбец был виден хотя бы на пару шагов по оси Y
+        if data_range > 0:
+            # Адаптивный нижний отступ: 15% от диапазона или минимум для видимости столбца (увеличен в 3 раза)
+            # Это гарантирует, что минимальный столбец будет виден хотя бы на пару шагов по оси Y
+            padding_bottom = max(data_range * 0.15, 0.6)  # Увеличенный в 3 раза отступ снизу для видимости
+            padding_top = max(data_range * 0.02, 0.1)  # Очень маленький отступ сверху
+        else:
+            # Если все значения одинаковые, добавляем небольшой отступ для визуализации
+            padding_bottom = 0.6
+            padding_top = 0.1
+        
+        # Вычисляем финальный диапазон оси Y для максимальной наглядности
+        # Минимум с достаточным отступом, чтобы минимальный столбец был виден
+        y_min = max(0, min_grade - padding_bottom)
+        # Максимум очень близко к максимальному значению (почти касается потолка)
+        y_max = max_grade + padding_top
+        
+        # Адаптивное вычисление оптимального количества меток на основе диапазона
+        # Для маленьких диапазонов (1-5) используем меньше меток, для больших (0-100) - больше
+        if data_range <= 5:
+            # Маленький диапазон (например, оценки от 1 до 5)
+            optimal_nticks = max(4, min(6, int(data_range * 1.5) + 2))
+        elif data_range <= 20:
+            # Средний диапазон (например, оценки от 0 до 20)
+            optimal_nticks = max(5, min(8, int(data_range / 3) + 3))
+        elif data_range <= 50:
+            # Большой диапазон (например, баллы от 0 до 50)
+            optimal_nticks = max(6, min(10, int(data_range / 8) + 4))
+        else:
+            # Очень большой диапазон (например, баллы от 0 до 100)
+            optimal_nticks = max(6, min(12, int(data_range / 12) + 5))
+        
         title = "Сравнение студентов"
         if subject is not None:
             title += f" - {subject}"
         else:
             title += " (по всем предметам)"
+        
+        # Настройка оси Y с вычисленным диапазоном для максимизации визуальной разницы
+        yaxis_config = dict(
+            title=dict(
+                text="Средняя оценка",
+                font=dict(size=12, color=COLORS['dark'])
+            ),
+            range=[y_min, y_max],  # Явно задаем диапазон для максимизации разницы
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)',
+            gridwidth=1,
+            showline=True,
+            linecolor='rgba(0,0,0,0.3)',
+            linewidth=1,
+            zeroline=False,
+            tickmode='auto',  # Автоматический режим - Plotly сам выберет метки
+            nticks=optimal_nticks,  # Адаптивное ограничение количества меток
+            tickfont=dict(size=10, color=COLORS['dark']),
+            side='left',
+            rangemode='normal'  # Нормальный режим масштабирования (не принудительно от 0)
+        )
         
         fig.update_layout(
             title={
@@ -748,7 +846,6 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
                 'font': {'size': 18, 'color': COLORS['dark']}
             },
             xaxis_title="Студент",
-            yaxis_title="Средняя оценка",
             template="plotly_white",
             hovermode='x unified',
             xaxis=dict(
@@ -756,11 +853,7 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
                 categoryorder='array',
                 categoryarray=student_names
             ),
-            yaxis=dict(
-                range=[0, max(5.5, max(mean_values) * 1.1) if mean_values else 5.5],
-                dtick=0.5,
-                autorange=False
-            ),
+            yaxis=yaxis_config,
             autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=100, t=70, b=150),  # Увеличен нижний отступ для наклонных имен
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
@@ -1092,6 +1185,86 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
         if subject is not None:
             title += f" - {subject}"
         
+        # Вычисляем диапазон данных для автоматического масштабирования
+        min_grade = min(grades_list) if grades_list else 0
+        max_grade = max(grades_list) if grades_list else 5
+        min_days = min(days_list) if days_list else 0
+        max_days = max(days_list) if days_list else 0
+        
+        # Вычисляем диапазоны с отступами для лучшей визуализации
+        grade_range = max_grade - min_grade
+        days_range = max_days - min_days
+        
+        # Адаптивные отступы для оси Y (оценки)
+        if grade_range > 0:
+            y_padding = max(grade_range * 0.1, 0.2)  # 10% от диапазона или минимум 0.2
+        else:
+            y_padding = 0.5  # Если все оценки одинаковые
+        
+        y_min = max(0, min_grade - y_padding)  # Минимум не ниже 0
+        y_max = max_grade + y_padding
+        
+        # Адаптивные отступы для оси X (дни)
+        if days_range > 0:
+            x_padding = max(days_range * 0.05, 5)  # 5% от диапазона или минимум 5 дней
+        else:
+            x_padding = 10  # Если все даты одинаковые
+        
+        x_min = max(0, min_days - x_padding)
+        x_max = max_days + x_padding
+        
+        # Адаптивное количество меток на основе диапазона
+        if grade_range <= 5:
+            y_nticks = max(4, min(8, int(grade_range * 2) + 2))
+        else:
+            y_nticks = 6
+        
+        if days_range <= 30:
+            x_nticks = max(4, min(8, int(days_range / 5) + 2))
+        elif days_range <= 365:
+            x_nticks = max(5, min(10, int(days_range / 30) + 3))
+        else:
+            x_nticks = max(6, min(12, int(days_range / 60) + 4))
+        
+        # Настройка осей с автоматическим масштабированием
+        xaxis_config = dict(
+            title=dict(
+                text="Дни с начала периода",
+                font=dict(size=12, color=COLORS['dark'])
+            ),
+            autorange=True,  # Автоматическое масштабирование
+            range=[x_min, x_max] if days_range > 0 else None,  # Устанавливаем диапазон только если есть данные
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)',
+            gridwidth=1,
+            showline=True,
+            linecolor='rgba(0,0,0,0.3)',
+            linewidth=1,
+            tickmode='auto',
+            nticks=x_nticks,
+            tickfont=dict(size=10, color=COLORS['dark'])
+        )
+        
+        yaxis_config = dict(
+            title=dict(
+                text="Оценка",
+                font=dict(size=12, color=COLORS['dark'])
+            ),
+            autorange=True,  # Автоматическое масштабирование
+            range=[y_min, y_max] if grade_range > 0 else [0, 5.5],  # Устанавливаем диапазон только если есть данные
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)',
+            gridwidth=1,
+            showline=True,
+            linecolor='rgba(0,0,0,0.3)',
+            linewidth=1,
+            zeroline=False,
+            tickmode='auto',
+            nticks=y_nticks,
+            tickfont=dict(size=10, color=COLORS['dark']),
+            rangemode='normal'  # Нормальный режим масштабирования
+        )
+        
         fig.update_layout(
             title={
                 'text': title,
@@ -1099,11 +1272,10 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
                 'xanchor': 'center',
                 'font': {'size': 18, 'color': COLORS['dark']}
             },
-            xaxis_title="Дни с начала периода",
-            yaxis_title="Оценка",
             template="plotly_white",
             hovermode='closest',
-            yaxis=dict(range=[0, 5.5], dtick=0.5),
+            xaxis=xaxis_config,
+            yaxis=yaxis_config,
             autosize=True,  # Адаптивный размер
             margin=dict(l=70, r=100, t=70, b=70),  # Увеличен правый отступ для colorbar
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),

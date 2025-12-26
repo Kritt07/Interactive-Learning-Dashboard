@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupEventListeners() {
     document.getElementById('studentFilter').addEventListener('change', handleFilterChange);
     document.getElementById('subjectFilter').addEventListener('change', handleFilterChange);
-    document.getElementById('plotTypeFilter').addEventListener('change', handleFilterChange);
     document.getElementById('refreshBtn').addEventListener('click', handleRefresh);
     
     // Обработчик изменения размера окна для адаптации графиков
@@ -47,11 +46,11 @@ function setupEventListeners() {
 async function handleFilterChange() {
     const studentId = document.getElementById('studentFilter').value;
     const subject = document.getElementById('subjectFilter').value;
-    const plotType = document.getElementById('plotTypeFilter').value;
 
     currentFilters.student_id = studentId || null;
     currentFilters.subject = subject || null;
-    currentFilters.plot_type = plotType;
+    // plot_type всегда 'dashboard'
+    currentFilters.plot_type = 'dashboard';
 
     await loadPlotData();
     await loadStatistics();
@@ -191,13 +190,13 @@ function renderPlots(plotData) {
         return;
     }
 
-    // Если plot_type = 'dashboard', то plotData содержит словарь с несколькими графиками
-    if (currentFilters.plot_type === 'dashboard' && typeof plotData === 'object' && !Array.isArray(plotData) && !plotData.data) {
-        // Дашборд содержит несколько графиков в виде объекта
+    // Если plotData содержит словарь с несколькими графиками (dashboard)
+    if (typeof plotData === 'object' && !Array.isArray(plotData) && !plotData.data) {
+        // Дашборд или сравнение содержат несколько графиков в виде объекта
         const plotNames = {
             'grade_distribution': 'Распределение оценок',
             'performance_trend': 'Динамика успеваемости',
-            'subject_comparison': 'Сравнение по предметам',
+            'subject_comparison': 'Сравнение средних оценок по предметам',
             'student_comparison': 'Сравнение студентов',
             'subject_heatmap': 'Тепловая карта по предметам',
             'scatter_trend': 'Корреляция времени и оценок'

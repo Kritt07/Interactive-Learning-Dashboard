@@ -143,8 +143,11 @@ async def get_plot_data(
         elif plot_type == "trend":
             plot_dict = plots.create_performance_trend_plot(df, student_id=student_id_int, subject=subject)
         elif plot_type == "comparison":
-            # График сравнения по предметам всегда учитывает фильтр по студенту
-            plot_dict = plots.create_subject_comparison_plot(df, student_id=student_id_int)
+            # Возвращаем оба графика сравнения: по предметам и по студентам
+            plot_dict = {
+                "subject_comparison": plots.create_subject_comparison_plot(df, student_id=student_id_int),
+                "student_comparison": plots.create_student_comparison_plot(df, subject=subject)
+            }
         elif plot_type == "heatmap":
             plot_dict = plots.create_subject_heatmap(df, student_id=student_id_int)
         elif plot_type == "box":
