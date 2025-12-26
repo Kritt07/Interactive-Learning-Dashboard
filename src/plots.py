@@ -25,13 +25,12 @@ COLORS = {
     'dark': '#1f2937',         # Темно-серый
 }
 
-# Градиентные цвета для тепловых карт
+# Градиентные цвета для тепловых карт (от зеленого для отличных оценок к желтому и красному для плохих)
 HEATMAP_COLORS = [
-    [0, '#1e40af'],      # Темно-синий
-    [0.25, '#3b82f6'],   # Синий
-    [0.5, '#60a5fa'],    # Светло-синий
-    [0.75, '#93c5fd'],   # Очень светло-синий
-    [1, '#dbeafe']       # Почти белый
+    [0, '#dc2626'],      # Красный (плохие оценки)
+    [0.33, '#f59e0b'],   # Желтый/оранжевый (удовлетворительно)
+    [0.66, '#eab308'],   # Ярко-желтый (хорошо)
+    [1, '#22c55e']       # Зеленый (отличные оценки)
 ]
 
 
@@ -850,14 +849,29 @@ def create_subject_heatmap(df: pd.DataFrame, student_id: Optional[int] = None) -
                         text_row.append("")
                 text_values.append(text_row)
             
+            # Вычисляем реальный минимум и максимум из данных (исключая None)
+            all_values = [val for row in z_values for val in row if val is not None and not pd.isna(val)]
+            if not all_values:
+                logger.warning("Нет валидных значений для тепловой карты")
+                return {"data": [], "layout": {"title": "Тепловая карта по предметам"}}
+            
+            z_min = 0  # Минимум всегда 0
+            z_max = max(all_values)  # Максимум вычисляется из данных (может быть 5, 100 и т.д.)
+            
+            # Если максимум меньше 1, устанавливаем его в 1 для корректного отображения
+            if z_max < 1:
+                z_max = 1
+            
             fig = go.Figure(data=go.Heatmap(
                 z=z_values,
                 x=pivot_df.columns.tolist(),
                 y=pivot_df.index.tolist(),
                 colorscale=HEATMAP_COLORS,
+                zmin=z_min,  # Минимум для градиента
+                zmax=z_max,  # Максимум для градиента (динамический)
                 text=text_values,
                 texttemplate='%{text}',
-                textfont={"size": 11, "color": "white"},
+                textfont={"size": 11, "color": "#1f2937"},  # Темно-серый цвет для лучшей видимости на светлых цветах (желтый, зеленый)
                 colorbar=dict(
                     title=dict(text="Оценка", font=dict(size=14)),
                     tickfont=dict(size=12)
@@ -1037,7 +1051,9 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
             marker=dict(
                 size=8,
                 color=grades_list,
-                colorscale='Viridis',
+                colorscale=HEATMAP_COLORS,
+                cmin=0,
+                cmax=5,
                 showscale=True,
                 colorbar=dict(title="Оценка"),
                 line=dict(width=1, color='white')
