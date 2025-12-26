@@ -524,12 +524,13 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
         return {"data": [], "layout": {"title": "Динамика успеваемости - Ошибка"}}
 
 
-def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
+def create_subject_comparison_plot(df: pd.DataFrame, student_id: Optional[int] = None) -> Dict:
     """
     Создаёт современный график сравнения средних оценок по предметам.
     
     Args:
         df: DataFrame с данными об оценках
+        student_id: Опциональный фильтр по ID студента. Если указан, показываются средние оценки только этого студента
         
     Returns:
         Словарь с данными для Plotly
@@ -538,7 +539,20 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
         if df.empty or 'subject' not in df.columns:
             return {"data": [], "layout": {}}
         
-        subject_stats = df.groupby('subject')['grade'].agg([
+        # Фильтруем данные по студенту, если указан
+        filtered_df = df.copy()
+        student_name = None
+        if student_id is not None:
+            if 'student_id' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['student_id'] == student_id]
+                # Получаем имя студента для заголовка
+                if 'student_name' in filtered_df.columns and not filtered_df.empty:
+                    student_name = filtered_df['student_name'].iloc[0]
+        
+        if filtered_df.empty:
+            return {"data": [], "layout": {}}
+        
+        subject_stats = filtered_df.groupby('subject')['grade'].agg([
             'mean', 'std', 'count', 'median'
         ]).reset_index()
         
@@ -576,13 +590,17 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
             customdata=subject_stats[['std', 'count']].values
         ))
         
-        # Горизонтальная линия для общего среднего
-        overall_mean = df['grade'].mean()
+        # Горизонтальная линия для общего среднего (вычисляется на основе отфильтрованных данных)
+        overall_mean = filtered_df['grade'].mean()
+        if student_name:
+            annotation_text = f"Среднее студента: {overall_mean:.2f}"
+        else:
+            annotation_text = f"Общее среднее: {overall_mean:.2f}"
         fig.add_hline(
             y=overall_mean,
             line_dash="dash",
             line_color=COLORS['danger'],
-            annotation_text=f"Общее среднее: {overall_mean:.2f}",
+            annotation_text=annotation_text,
             annotation_position="right"
         )
         
@@ -607,9 +625,15 @@ def create_subject_comparison_plot(df: pd.DataFrame) -> Dict:
         y_min = max(0, (y_min // 0.5) * 0.5)
         y_max = ((y_max // 0.5) + 1) * 0.5
         
+        # Формируем заголовок в зависимости от того, выбран ли конкретный студент
+        if student_name:
+            title_text = f'Сравнение средних оценок по предметам - {student_name}'
+        else:
+            title_text = 'Сравнение средних оценок по предметам'
+        
         fig.update_layout(
             title={
-                'text': 'Сравнение средних оценок по предметам',
+                'text': title_text,
                 'x': 0.5,
                 'xanchor': 'center',
                 'font': {'size': 18, 'color': COLORS['dark']}
@@ -671,35 +695,41 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
             'mean', 'count', 'std'
         ]).reset_index()
         
-        student_avg = student_avg.sort_values('mean', ascending=False).head(top_n)
+        # Берем top_n студентов по среднему баллу, затем сортируем по возрастанию слева направо
+        student_avg = student_avg.nlargest(top_n, 'mean')
+        # Сортируем по возрастанию, чтобы столбцы шли по возрастанию слева направо
+        student_avg = student_avg.sort_values('mean', ascending=True).reset_index(drop=True)
         student_avg['std'] = student_avg['std'].fillna(0)
+        
+        # Явно преобразуем данные в списки Python с правильными типами
+        student_names = student_avg['student_name'].tolist()
+        mean_values = [float(val) for val in student_avg['mean'].tolist()]
+        std_values = [float(val) for val in student_avg['std'].tolist()]
+        count_values = [int(val) for val in student_avg['count'].tolist()]
         
         fig = go.Figure()
         
-        # Горизонтальная столбчатая диаграмма
+        # Вертикальная столбчатая диаграмма: имена на X, оценки на Y
         fig.add_trace(go.Bar(
-            y=student_avg['student_name'],
-            x=student_avg['mean'],
-            orientation='h',
+            x=student_names,
+            y=mean_values,
+            orientation='v',
             name="Средняя оценка",
-            marker=dict(
-                color=student_avg['mean'],
-                colorscale='Viridis',
-                showscale=True,
-                colorbar=dict(title="Оценка")
-            ),
+            marker_color=COLORS['primary'],
             marker_line_color='white',
             marker_line_width=2,
-            text=[f"{val:.2f}" for val in student_avg['mean']],  # Форматирование с 2 знаками после запятой
+            text=[f"{val:.2f}" for val in mean_values],  # Форматирование с 2 знаками после запятой
             textposition='auto',  # Автоматическое позиционирование
             textfont=dict(size=10, color=COLORS['dark']),
-            hovertemplate='Студент: %{y}<br>Средняя оценка: %{x:.2f}<br>Количество: %{customdata[0]}<br>Ст. отклонение: %{customdata[1]:.2f}<extra></extra>',
-            customdata=student_avg[['count', 'std']].values
+            hovertemplate='Студент: %{x}<br>Средняя оценка: %{y:.2f}<br>Количество: %{customdata[0]}<br>Ст. отклонение: %{customdata[1]:.2f}<extra></extra>',
+            customdata=list(zip(count_values, std_values))
         ))
         
-        title = f"Топ {top_n} студентов по успеваемости"
+        title = "Сравнение студентов"
         if subject is not None:
             title += f" - {subject}"
+        else:
+            title += " (по всем предметам)"
         
         fig.update_layout(
             title={
@@ -708,13 +738,22 @@ def create_student_comparison_plot(df: pd.DataFrame, subject: Optional[str] = No
                 'xanchor': 'center',
                 'font': {'size': 18, 'color': COLORS['dark']}
             },
-            xaxis_title="Средняя оценка",
-            yaxis_title="Студент",
+            xaxis_title="Студент",
+            yaxis_title="Средняя оценка",
             template="plotly_white",
-            hovermode='y unified',
-            xaxis=dict(range=[0, 5.5], dtick=0.5),
+            hovermode='x unified',
+            xaxis=dict(
+                tickangle=-45,  # Наклон меток для лучшей читаемости
+                categoryorder='array',
+                categoryarray=student_names
+            ),
+            yaxis=dict(
+                range=[0, max(5.5, max(mean_values) * 1.1) if mean_values else 5.5],
+                dtick=0.5,
+                autorange=False
+            ),
             autosize=True,  # Адаптивный размер
-            margin=dict(l=100, r=100, t=70, b=70),  # Увеличены отступы для длинных имен
+            margin=dict(l=70, r=100, t=70, b=150),  # Увеличен нижний отступ для наклонных имен
             font=dict(family="Arial, sans-serif", size=11, color=COLORS['dark']),
             plot_bgcolor='white',
             paper_bgcolor='white',
@@ -1068,7 +1107,7 @@ def create_dashboard_plots(df: pd.DataFrame, student_id: Optional[int] = None,
     plots = {
         "grade_distribution": create_grade_distribution_plot(df, student_id=student_id, subject=subject),
         "performance_trend": create_performance_trend_plot(df, student_id=student_id, subject=subject),
-        "subject_comparison": create_subject_comparison_plot(df),
+        "subject_comparison": create_subject_comparison_plot(df, student_id=student_id),
         "student_comparison": create_student_comparison_plot(df, subject=subject),
         "subject_heatmap": create_subject_heatmap(df, student_id=student_id),
         "scatter_trend": create_scatter_trend_plot(df, subject=subject)
