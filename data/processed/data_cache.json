@@ -1,8 +1,8 @@
 {
-  "file_hash": "69f41761a4cf24233550cfdee238c6acb7858f45fefb50adf1b47035981486fa",
-  "timestamp": "2025-12-25T15:21:12.450864",
+  "file_hash": "c0bb04f0901ddff58fe5234aed409c5db077473faeab4fb52227ec7cd2847a42",
+  "timestamp": "2025-12-26T16:20:21.391604",
   "metadata": {
-    "rows": 1901,
+    "rows": 800,
     "columns": [
       "student_id",
       "student_name",
@@ -14,8 +14,8 @@
       "notes"
     ],
     "date_range": {
-      "min": "2023-09-01 00:00:00",
-      "max": "2024-05-31 00:00:00"
+      "min": "2024-12-26 00:00:00",
+      "max": "2025-12-26 00:00:00"
     }
   },
   "data_path": "C:\\TopIt\\Interactive-Learning-Dashboard\\data\\processed\\cached_data.csv"

@@ -394,7 +394,7 @@ function renderStatistics(stats) {
     const statsItems = [
         {
             title: 'Средняя оценка',
-            value: stats.average_grade ? stats.average_grade.toFixed(2) : 'N/A',
+            value: (stats.average_grade != null && stats.average_grade !== undefined) ? stats.average_grade.toFixed(2) : 'N/A',
             icon: '📈'
         },
         {
@@ -404,12 +404,12 @@ function renderStatistics(stats) {
         },
         {
             title: 'Максимальная оценка',
-            value: stats.max_grade || 'N/A',
+            value: (stats.max_grade != null && stats.max_grade !== undefined) ? stats.max_grade : 'N/A',
             icon: '⭐'
         },
         {
             title: 'Минимальная оценка',
-            value: stats.min_grade || 'N/A',
+            value: (stats.min_grade != null && stats.min_grade !== undefined) ? stats.min_grade : 'N/A',
             icon: '📊'
         }
     ];

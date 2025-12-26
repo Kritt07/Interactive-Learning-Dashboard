@@ -29,16 +29,43 @@ def calculate_statistics(df: pd.DataFrame) -> Dict:
             "date_range": None
         }
     
-    stats = {
-        "total_students": df['student_id'].nunique() if 'student_id' in df.columns else 0,
-        "total_grades": len(df),
-        "total_subjects": df['subject'].nunique() if 'subject' in df.columns else 0,
-        "average_grade": float(df['grade'].mean()) if 'grade' in df.columns else 0.0,
-        "median_grade": float(df['grade'].median()) if 'grade' in df.columns else 0.0,
-        "min_grade": float(df['grade'].min()) if 'grade' in df.columns else 0.0,
-        "max_grade": float(df['grade'].max()) if 'grade' in df.columns else 0.0,
-        "std_grade": float(df['grade'].std()) if 'grade' in df.columns else 0.0,
-    }
+    # Вычисляем статистику по оценкам с обработкой NaN
+    if 'grade' in df.columns:
+        grade_series = df['grade'].dropna()
+        if len(grade_series) > 0:
+            stats = {
+                "total_students": df['student_id'].nunique() if 'student_id' in df.columns else 0,
+                "total_grades": len(df),
+                "total_subjects": df['subject'].nunique() if 'subject' in df.columns else 0,
+                "average_grade": float(grade_series.mean()),
+                "median_grade": float(grade_series.median()),
+                "min_grade": float(grade_series.min()),
+                "max_grade": float(grade_series.max()),
+                "std_grade": float(grade_series.std()) if len(grade_series) > 1 else 0.0,
+            }
+        else:
+            # Если все оценки NaN
+            stats = {
+                "total_students": df['student_id'].nunique() if 'student_id' in df.columns else 0,
+                "total_grades": len(df),
+                "total_subjects": df['subject'].nunique() if 'subject' in df.columns else 0,
+                "average_grade": None,
+                "median_grade": None,
+                "min_grade": None,
+                "max_grade": None,
+                "std_grade": None,
+            }
+    else:
+        stats = {
+            "total_students": df['student_id'].nunique() if 'student_id' in df.columns else 0,
+            "total_grades": len(df),
+            "total_subjects": df['subject'].nunique() if 'subject' in df.columns else 0,
+            "average_grade": None,
+            "median_grade": None,
+            "min_grade": None,
+            "max_grade": None,
+            "std_grade": None,
+        }
     
     if 'date' in df.columns:
         # Преобразуем даты в datetime, если они еще не в этом формате
@@ -92,16 +119,43 @@ def get_student_statistics(df: pd.DataFrame, student_id: int) -> Dict:
                 "grades": subject_df['grade'].tolist()
             })
     
-    return {
-        "student_id": student_id,
-        "student_name": student_name,
-        "total_grades": len(student_df),
-        "average_grade": float(student_df['grade'].mean()),
-        "median_grade": float(student_df['grade'].median()),
-        "min_grade": float(student_df['grade'].min()),
-        "max_grade": float(student_df['grade'].max()),
-        "subjects": subject_stats
-    }
+    # Вычисляем статистику по оценкам с обработкой NaN
+    if 'grade' in student_df.columns:
+        grade_series = student_df['grade'].dropna()
+        if len(grade_series) > 0:
+            return {
+                "student_id": student_id,
+                "student_name": student_name,
+                "total_grades": len(student_df),
+                "average_grade": float(grade_series.mean()),
+                "median_grade": float(grade_series.median()),
+                "min_grade": float(grade_series.min()),
+                "max_grade": float(grade_series.max()),
+                "subjects": subject_stats
+            }
+        else:
+            # Если все оценки NaN
+            return {
+                "student_id": student_id,
+                "student_name": student_name,
+                "total_grades": len(student_df),
+                "average_grade": None,
+                "median_grade": None,
+                "min_grade": None,
+                "max_grade": None,
+                "subjects": subject_stats
+            }
+    else:
+        return {
+            "student_id": student_id,
+            "student_name": student_name,
+            "total_grades": len(student_df),
+            "average_grade": None,
+            "median_grade": None,
+            "min_grade": None,
+            "max_grade": None,
+            "subjects": subject_stats
+        }
 
 
 def get_subject_statistics(df: pd.DataFrame, subject: Optional[str] = None) -> Dict:
@@ -128,16 +182,43 @@ def get_subject_statistics(df: pd.DataFrame, subject: Optional[str] = None) -> D
             "average_grade": 0.0
         }
     
-    stats = {
-        "subject": subject if subject else "all",
-        "total_students": filtered_df['student_id'].nunique() if 'student_id' in filtered_df.columns else 0,
-        "total_grades": len(filtered_df),
-        "average_grade": float(filtered_df['grade'].mean()),
-        "median_grade": float(filtered_df['grade'].median()),
-        "min_grade": float(filtered_df['grade'].min()),
-        "max_grade": float(filtered_df['grade'].max()),
-        "std_grade": float(filtered_df['grade'].std())
-    }
+    # Вычисляем статистику по оценкам с обработкой NaN
+    if 'grade' in filtered_df.columns:
+        grade_series = filtered_df['grade'].dropna()
+        if len(grade_series) > 0:
+            stats = {
+                "subject": subject if subject else "all",
+                "total_students": filtered_df['student_id'].nunique() if 'student_id' in filtered_df.columns else 0,
+                "total_grades": len(filtered_df),
+                "average_grade": float(grade_series.mean()),
+                "median_grade": float(grade_series.median()),
+                "min_grade": float(grade_series.min()),
+                "max_grade": float(grade_series.max()),
+                "std_grade": float(grade_series.std()) if len(grade_series) > 1 else 0.0
+            }
+        else:
+            # Если все оценки NaN
+            stats = {
+                "subject": subject if subject else "all",
+                "total_students": filtered_df['student_id'].nunique() if 'student_id' in filtered_df.columns else 0,
+                "total_grades": len(filtered_df),
+                "average_grade": None,
+                "median_grade": None,
+                "min_grade": None,
+                "max_grade": None,
+                "std_grade": None
+            }
+    else:
+        stats = {
+            "subject": subject if subject else "all",
+            "total_students": filtered_df['student_id'].nunique() if 'student_id' in filtered_df.columns else 0,
+            "total_grades": len(filtered_df),
+            "average_grade": None,
+            "median_grade": None,
+            "min_grade": None,
+            "max_grade": None,
+            "std_grade": None
+        }
     
     return stats
 

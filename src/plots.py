@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 import logging
 import numpy as np
 from scipy import stats
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def create_grade_distribution_plot(df: pd.DataFrame, student_id: Optional[int] =
         for g in grades.tolist():
             try:
                 grade_val = float(g)
-                if not pd.isna(grade_val) and 0 <= grade_val <= 5:
+                if not pd.isna(grade_val):
                     grades_list.append(grade_val)
             except (ValueError, TypeError):
                 continue
@@ -107,21 +108,57 @@ def create_grade_distribution_plot(df: pd.DataFrame, student_id: Optional[int] =
         min_grade = min(grades_list)
         max_grade = max(grades_list)
         
+        # Подсчитываем частоту каждой уникальной оценки
+        grade_counts = Counter(grades_list)
+        
+        # Сортируем оценки по значению
+        unique_grades_sorted = sorted(grade_counts.keys())
+        frequencies = [grade_counts[grade] for grade in unique_grades_sorted]
+        num_unique_grades = len(unique_grades_sorted)
+        
+        # Вычисляем плотность (вероятность) для каждой оценки
+        total_count = len(grades_list)
+        densities = [freq / total_count for freq in frequencies]
+        
+        # Всегда используем категориальную ось X - она показывает только те оценки, которые есть в данных
+        # Столбцы будут одинаковой ширины и автоматически растянутся по всей ширине графика
+        # bargap контролирует промежуток между столбцами: меньше bargap = шире столбцы
+        # Используем очень маленькие значения для максимально широких столбцов
+        if num_unique_grades == 1:
+            bargap = 0.0   # Максимально широкие столбцы для 1 оценки (без промежутков)
+        elif num_unique_grades <= 3:
+            bargap = 0.02  # Очень широкие столбцы для 2-3 оценок
+        elif num_unique_grades <= 5:
+            bargap = 0.03  # Широкие столбцы для 4-5 оценок
+        elif num_unique_grades <= 8:
+            bargap = 0.05  # Средне-широкие столбцы для 6-8 оценок
+        elif num_unique_grades <= 12:
+            bargap = 0.06  # Средние столбцы для 9-12 оценок (значительно уменьшено)
+        elif num_unique_grades <= 15:
+            bargap = 0.08  # Средне-узкие столбцы для 13-15 оценок
+        elif num_unique_grades <= 20:
+            bargap = 0.1   # Узкие столбцы для 16-20 оценок (значительно уменьшено)
+        else:
+            # Для большого количества оценок используем формулу для плавной адаптации
+            bargap = min(0.2, 0.08 + (num_unique_grades - 20) * 0.002)
+        
         # Создаем компактный график
         fig = go.Figure()
         
-        # Гистограмма
+        # Столбчатая диаграмма - по одной для каждой уникальной оценки
+        # Категориальная ось X автоматически покажет только существующие оценки
+        # и распределит столбцы равномерно с одинаковой шириной
         fig.add_trace(
-            go.Histogram(
-                x=grades_list,
-                nbinsx=20,
+            go.Bar(
+                x=unique_grades_sorted,
+                y=densities,
                 name="Распределение",
                 marker_color=COLORS['primary'],
                 marker_line_color='white',
                 marker_line_width=0.5,
                 opacity=0.8,
-                histnorm='probability density',
-                hovertemplate='Оценка: %{x:.2f}<br>Плотность: %{y:.3f}<extra></extra>',
+                hovertemplate='Оценка: %{x}<br>Плотность: %{y:.3f}<br>Количество: %{customdata}<extra></extra>',
+                customdata=frequencies,
                 showlegend=False
             )
         )
@@ -148,53 +185,6 @@ def create_grade_distribution_plot(df: pd.DataFrame, student_id: Optional[int] =
         except Exception as e:
             logger.warning(f"Не удалось построить KDE кривую: {e}")
         
-        # Вертикальные линии для среднего и медианы (без аннотаций)
-        fig.add_vline(
-            x=mean_grade,
-            line_dash="dash",
-            line_color=COLORS['success'],
-            line_width=1.5,
-            annotation_text="",
-            annotation_position="top",
-            row=None,
-            col=None
-        )
-        
-        fig.add_vline(
-            x=median_grade,
-            line_dash="dot",
-            line_color=COLORS['warning'],
-            line_width=1.5,
-            annotation_text="",
-            annotation_position="top",
-            row=None,
-            col=None
-        )
-        
-        # Добавляем невидимые точки для легенды со статистикой
-        fig.add_trace(
-            go.Scatter(
-                x=[mean_grade],
-                y=[0],
-                mode='lines',
-                name=f'Среднее: {mean_grade:.2f}',
-                line=dict(color=COLORS['success'], width=2, dash='dash'),
-                showlegend=True,
-                hovertemplate=f'Среднее: {mean_grade:.2f}<extra></extra>'
-            )
-        )
-        
-        fig.add_trace(
-            go.Scatter(
-                x=[median_grade],
-                y=[0],
-                mode='lines',
-                name=f'Медиана: {median_grade:.2f}',
-                line=dict(color=COLORS['warning'], width=2, dash='dot'),
-                showlegend=True,
-                hovertemplate=f'Медиана: {median_grade:.2f}<extra></extra>'
-            )
-        )
         
         # Компактный layout (без фиксированной высоты для адаптивности)
         fig.update_layout(
@@ -228,12 +218,14 @@ def create_grade_distribution_plot(df: pd.DataFrame, student_id: Optional[int] =
             ),
             xaxis=dict(
                 title=dict(text="Оценка", font=dict(size=11)),
-                range=[max(0, min_grade - 0.2), min(5.5, max_grade + 0.2)],
-                dtick=1,  # Упрощаем деления
+                type='category',  # Всегда категориальная ось - показывает только существующие оценки
                 showgrid=True,
                 gridcolor=COLORS['light'],
-                gridwidth=0.5
+                gridwidth=0.5,
+                domain=[0, 1]  # Ось X занимает всю ширину графика (от 0 до 1)
             ),
+            bargap=bargap,  # Промежуток между столбцами (контролирует ширину столбцов)
+            bargroupgap=0,  # Убираем промежутки между группами столбцов (если есть)
             yaxis=dict(
                 title=dict(text="Плотность", font=dict(size=11)),
                 showgrid=True,
@@ -456,10 +448,47 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
             title += f" - {subject}"
         
         # Вычисляем диапазон для оси Y
-        min_grade = monthly_stats['mean'].min()
-        max_grade = monthly_stats['mean'].max()
-        grade_range = max_grade - min_grade
-        y_range_padding = grade_range * 0.2 if grade_range > 0 else 0.5
+        # Учитываем не только средние значения, но и границы области доверия
+        min_mean = monthly_stats['mean'].min()
+        max_mean = monthly_stats['mean'].max()
+        min_lower = (monthly_stats['mean'] - monthly_stats['std']).min()
+        max_upper = (monthly_stats['mean'] + monthly_stats['std']).max()
+        
+        # Находим реальные минимальные и максимальные значения с учетом области доверия
+        data_min = min(min_mean, min_lower)
+        data_max = max(max_mean, max_upper)
+        
+        # Добавляем отступы (15% от диапазона или минимум 0.3)
+        data_range = data_max - data_min
+        padding = max(data_range * 0.15, 0.3)
+        
+        # Вычисляем финальный диапазон оси Y (убираем ограничение до 5, чтобы поддерживать любой диапазон)
+        y_min = max(0, data_min - padding)  # Минимум не ниже 0
+        y_max = data_max + padding  # Убираем ограничение min(5, ...), чтобы поддерживать любые значения
+        y_full_range = y_max - y_min
+        
+        # Настройка оси Y с автоматическим масштабированием и ограничением меток
+        # Используем autorange=True для автоматического масштабирования
+        # и tickmode='auto' с nticks для скрытия части меток, чтобы избежать "мешанины"
+        yaxis_config = dict(
+            title=dict(
+                text="Оценка",
+                font=dict(size=12, color=COLORS['dark'])
+            ),
+            autorange=True,  # Автоматическое масштабирование
+            showgrid=True,
+            gridcolor='rgba(0,0,0,0.1)',
+            gridwidth=1,
+            showline=True,
+            linecolor='rgba(0,0,0,0.3)',
+            linewidth=1,
+            zeroline=False,
+            tickmode='auto',  # Автоматический режим - Plotly сам выберет метки
+            nticks=6,  # Ограничиваем количество меток максимум 6 - лишние будут скрыты
+            tickfont=dict(size=10, color=COLORS['dark']),
+            side='left',
+            rangemode='normal'  # Нормальный режим масштабирования (не принудительно от 0)
+        )
         
         # Настройка layout с правильным автомасштабированием
         fig.update_layout(
@@ -478,26 +507,7 @@ def create_performance_trend_plot(df: pd.DataFrame, student_id: Optional[int] = 
                 categoryarray=month_labels,
                 tickangle=-45
             ),
-            yaxis=dict(
-                title=dict(
-                    text="Оценка",
-                    font=dict(size=12, color=COLORS['dark'])
-                ),
-                range=[max(0, min_grade - y_range_padding), min(5, max_grade + y_range_padding)],
-                dtick=0.5,
-                autorange=False,
-                showgrid=True,
-                gridcolor='rgba(0,0,0,0.1)',
-                gridwidth=1,
-                showline=True,
-                linecolor='rgba(0,0,0,0.3)',
-                linewidth=1,
-                zeroline=False,
-                tickmode='linear',
-                tick0=0,
-                tickfont=dict(size=10, color=COLORS['dark']),
-                side='left'
-            ),
+            yaxis=yaxis_config,
             legend=dict(
                 x=0.98,
                 y=0.98,
