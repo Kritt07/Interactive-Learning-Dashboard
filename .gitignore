@@ -23,6 +23,14 @@ data/*.csv
 data/*.xlsx
 !data/sample.csv       # sample.csv оставляем для примеров и тестов
 
+# Processed data (cache files) - игнорируем все файлы в processed, кроме .gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Reports (сгенерированные отчеты) - игнорируем все файлы, кроме .gitkeep
+reports/*
+!reports/.gitkeep
+
 # Logs
 *.log
 

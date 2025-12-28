@@ -1,0 +1,291 @@
+name: CI/CD Pipeline
+
+on:
+  # Запуск при push и pull request
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  
+  # Scheduled workflow (запуск каждый день в 2:00 UTC)
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # Manual workflow dispatch с параметрами
+  workflow_dispatch:
+    inputs:
+      generate_report:
+        description: 'Генерировать отчет?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      run_tests:
+        description: 'Запускать тесты?'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      deploy:
+        description: 'Деплоить на GitHub Pages?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  # Job 1: Проверка кода (flake8, black)
+  code-quality:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black
+      
+      - name: Check code style with flake8
+        run: |
+          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      
+      - name: Check code formatting with black
+        run: |
+          black --check src/ tests/
+
+  # Job 2: Unit тесты
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    if: github.event.inputs.run_tests != 'false' || github.event_name != 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create data directories
+        run: |
+          mkdir -p data/raw
+          mkdir -p data/processed
+      
+      - name: Copy sample data for tests
+        run: |
+          if [ -f data/sample.csv ]; then
+            cp data/sample.csv data/raw/test_data.csv
+          fi
+      
+      - name: Run tests with pytest
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+      
+      - name: Upload coverage HTML report as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+  # Job 3: Генерация отчета
+  generate-report:
+    name: Generate Report
+    runs-on: ubuntu-latest
+    needs: [code-quality]
+    if: github.event.inputs.generate_report != 'false' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create data directories
+        run: |
+          mkdir -p data/raw
+          mkdir -p data/processed
+          mkdir -p reports
+      
+      - name: Copy sample data for report generation
+        run: |
+          if [ -f data/sample.csv ]; then
+            cp data/sample.csv data/raw/test_data.csv
+          fi
+      
+      - name: Generate HTML report
+        run: |
+          python scripts/generate_report.py --output reports/report.html
+      
+      - name: Upload report as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-report
+          path: reports/report.html
+          retention-days: 90
+      
+      - name: Generate JSON statistics
+        id: stats
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from src.data_loader import get_data_loader
+          from src import analytics
+          from src.config import DATA_DIR, PROCESSED_DIR
+          import json
+          from pathlib import Path
+          
+          try:
+              data_loader = get_data_loader(str(DATA_DIR / 'raw'), str(PROCESSED_DIR))
+              df = data_loader.load_data(use_cache=True)
+              if not df.empty:
+                  stats = analytics.calculate_statistics(df)
+                  Path('reports').mkdir(exist_ok=True)
+                  with open('reports/stats.json', 'w') as f:
+                      json.dump(stats, f, indent=2, default=str)
+                  print('Stats generated')
+              else:
+                  print('No data')
+          except Exception as e:
+              print(f'Error: {e}')
+          "
+      
+      - name: Upload statistics JSON
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: statistics-json
+          path: reports/stats.json
+          retention-days: 90
+
+  # Job 4: Деплой на GitHub Pages
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [test, generate-report]
+    if: github.event.inputs.deploy == 'true' || (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create data directories
+        run: |
+          mkdir -p data/raw
+          mkdir -p data/processed
+          mkdir -p docs
+      
+      - name: Copy sample data
+        run: |
+          if [ -f data/sample.csv ]; then
+            cp data/sample.csv data/raw/test_data.csv
+          fi
+      
+      - name: Generate report for Pages
+        run: |
+          python scripts/generate_report.py --output docs/index.html
+      
+      - name: Copy frontend files
+        run: |
+          mkdir -p docs/frontend
+          cp -r frontend/* docs/frontend/ 2>/dev/null || true
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Job 5: Сводка результатов
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, test, generate-report, deploy]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create summary
+        run: |
+          echo "## 📊 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Completed Jobs:" >> $GITHUB_STEP_SUMMARY
+          echo "- Code Quality Check: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Report Generation: ${{ needs.generate-report.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Deploy: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifacts:" >> $GITHUB_STEP_SUMMARY
+          ls -la artifacts/ >> $GITHUB_STEP_SUMMARY || echo "No artifacts"

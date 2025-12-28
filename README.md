@@ -35,6 +35,8 @@ pip install -r requirements.txt
 
 Файл данных должен содержать следующие колонки: `student_id`, `student_name`, `subject`, `grade`, `date`.
 
+> **Примечание:** В репозитории присутствует демонстрационный файл `data/sample.csv`, который показывает пример правильного формата данных. Этот файл используется только для ознакомления и не обрабатывается приложением напрямую. Для работы с данными поместите ваши CSV или Excel файлы в директорию `data/raw/`.
+
 Если нужно сгенерировать тестовые данные для разработки:
 ```bash
 python scripts/generate_sample_data.py
@@ -82,10 +84,95 @@ python -m http.server 8080
 # Откройте в браузере: http://localhost:8080
 ```
 
-### Example API call
+### Примеры использования API
+
+#### Базовый пример - получение данных для графиков
 ```python
 import requests
-print(requests.get("http://localhost:8000/api/plot-data").json())
+
+# Получение данных для построения графиков
+response = requests.get("http://localhost:8000/api/plot-data")
+print(response.json())
+```
+
+#### Проверка статуса данных
+```python
+import requests
+
+# Проверка наличия данных и системы оценивания
+response = requests.get("http://localhost:8000/api/data-status")
+status = response.json()
+print(f"Данные загружены: {status['has_data']}")
+print(f"Всего записей: {status['total_records']}")
+```
+
+#### Получение списка студентов
+```python
+import requests
+
+# Получение списка всех студентов
+response = requests.get("http://localhost:8000/api/students")
+students = response.json()
+print(f"Найдено студентов: {len(students)}")
+for student in students:
+    print(f"ID: {student['student_id']}, Имя: {student['student_name']}")
+```
+
+#### Получение статистики
+```python
+import requests
+
+# Общая статистика
+response = requests.get("http://localhost:8000/api/statistics")
+stats = response.json()
+print(f"Средняя оценка: {stats['average_grade']:.2f}")
+print(f"Всего записей: {stats['total_records']}")
+
+# Статистика по конкретному студенту
+student_id = 1
+response = requests.get(f"http://localhost:8000/api/students/{student_id}/statistics")
+student_stats = response.json()
+print(f"Средняя оценка студента: {student_stats['average_grade']:.2f}")
+```
+
+#### Настройка системы оценивания
+```python
+import requests
+
+# Установка 100-балльной системы оценивания
+grading_system = {
+    "system_type": "100-point",
+    "max_grade": 100,
+    "min_grade": 0
+}
+response = requests.post(
+    "http://localhost:8000/api/grading-system",
+    json=grading_system
+)
+print(response.json())
+```
+
+#### Импорт данных через API
+```python
+import requests
+
+# Импорт CSV файла
+with open('data.csv', 'rb') as f:
+    files = {'file': ('data.csv', f, 'text/csv')}
+    response = requests.post(
+        "http://localhost:8000/api/import",
+        files=files
+    )
+print(response.json())
+```
+
+#### Генерация отчета
+```python
+# Использование скрипта для генерации HTML отчета
+import subprocess
+
+subprocess.run(["python", "scripts/generate_report.py", "--output", "reports/report.html"])
+print("Отчет сгенерирован в reports/report.html")
 ```
 
 ## Project Structure
@@ -112,18 +199,22 @@ project/
 │   └── test_api.py
 │
 ├── data/
+│   ├── sample.csv    # Демонстрационный файл с примером формата данных
 │   ├── raw/          # Директория для импортированных пользователем данных
 │   └── processed/    # Директория для кешированных и обработанных данных
 │
 ├── scripts/
-│   ├── generate_sample_data.py
-│   └── update_data.py
+│   ├── generate_sample_data.py  # Генерация тестовых данных
+│   ├── update_data.py            # Обновление данных
+│   └── generate_report.py        # Генерация HTML отчетов
 │
 ├── docs/
 │   └── architecture.md
 │
+├── reports/                      # Сгенерированные отчеты
+│
 ├── .github/workflows/
-│   └── tests.yml
+│   └── ci.yml                    # CI/CD pipeline с тестами, проверками и деплоем
 │
 ├── requirements.txt
 ├── .gitignore
@@ -169,12 +260,39 @@ black src/ tests/   # Форматирование кода
 ```
 
 ## CI/CD
-GitHub Actions тестирует проект, проверяет стиль, запускает тесты и может обновлять данные по расписанию.
 
-Файл:
-```bash
-.github/workflows/tests.yml
-```
+Проект использует GitHub Actions для автоматизации проверок, тестирования и деплоя.
+
+### Автоматические проверки
+
+Workflow запускается при:
+- Push в ветки `main`, `master`, `develop`
+- Создании Pull Request
+- По расписанию (каждый день в 2:00 UTC)
+- Ручном запуске через GitHub Actions UI
+
+### Что делает CI/CD pipeline:
+
+1. **Code Quality Check** - проверка кода с помощью `flake8` и `black`
+2. **Unit Tests** - запуск всех тестов с покрытием кода
+3. **Report Generation** - автоматическая генерация HTML отчетов
+4. **Deploy to GitHub Pages** - публикация отчетов на GitHub Pages (при scheduled runs)
+
+### Ручной запуск workflow
+
+Вы можете запустить workflow вручную с параметрами:
+- `generate_report` - генерировать ли отчет
+- `run_tests` - запускать ли тесты
+- `deploy` - деплоить ли на GitHub Pages
+
+### Артефакты
+
+После выполнения workflow доступны следующие артефакты:
+- `coverage-report` - HTML отчет о покрытии кода тестами
+- `performance-report` - HTML отчет об успеваемости студентов
+- `statistics-json` - JSON файл со статистикой
+
+Файл конфигурации: `.github/workflows/ci.yml`
 
 ## Advanced Usage
 
@@ -189,6 +307,23 @@ python scripts/update_data.py
 ```bash
 python scripts/generate_sample_data.py
 ```
+
+### Generate HTML report
+
+Генерация HTML отчета со статистикой успеваемости:
+
+```bash
+# Генерация отчета в стандартное место (reports/report.html)
+python scripts/generate_report.py
+
+# Генерация отчета в указанное место
+python scripts/generate_report.py --output path/to/report.html
+```
+
+Скрипт автоматически:
+- Загружает данные из `data/raw/`
+- Генерирует статистику
+- Создает красивый HTML отчет с таблицами и метриками
 
 ## Contributing
 Pull-requests welcome.
@@ -213,6 +348,7 @@ Pull-requests welcome.
 - Убедитесь, что вы импортировали данные через интерфейс приложения
 - Проверьте формат данных в импортируемом файле (колонки: student_id, student_name, subject, grade, date)
 - Проверьте, что файл находится в директории `data/raw/`
+- Для ознакомления с правильным форматом данных посмотрите демонстрационный файл `data/sample.csv`
 
 ## License
 MIT License
