@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Пути к данным
 BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "data" / "raw"
+DATA_DIR = BASE_DIR / "data"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 CACHE_DIR = BASE_DIR / "data" / "processed"
 

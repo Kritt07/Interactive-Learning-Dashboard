@@ -390,7 +390,9 @@ class DataLoader:
     
     def get_grades(self, df: pd.DataFrame, 
                    student_id: Optional[int] = None,
-                   subject: Optional[str] = None) -> pd.DataFrame:
+                   subject: Optional[str] = None,
+                   start_date: Optional[str] = None,
+                   end_date: Optional[str] = None) -> pd.DataFrame:
         """
         Получает оценки с опциональной фильтрацией.
         
@@ -398,6 +400,8 @@ class DataLoader:
             df: DataFrame с данными
             student_id: Фильтр по ID студента
             subject: Фильтр по предмету
+            start_date: Начальная дата (формат: YYYY-MM-DD)
+            end_date: Конечная дата (формат: YYYY-MM-DD)
             
         Returns:
             Отфильтрованный DataFrame
@@ -412,6 +416,22 @@ class DataLoader:
             if 'subject' in filtered_df.columns:
                 filtered_df = filtered_df[filtered_df['subject'].str.lower() == subject.lower()]
         
+        # Фильтрация по датам
+        if 'date' in filtered_df.columns:
+            if start_date is not None:
+                try:
+                    start_dt = pd.to_datetime(start_date)
+                    filtered_df = filtered_df[pd.to_datetime(filtered_df['date']) >= start_dt]
+                except (ValueError, TypeError):
+                    logger.warning(f"Некорректная начальная дата: {start_date}")
+            
+            if end_date is not None:
+                try:
+                    end_dt = pd.to_datetime(end_date)
+                    filtered_df = filtered_df[pd.to_datetime(filtered_df['date']) <= end_dt]
+                except (ValueError, TypeError):
+                    logger.warning(f"Некорректная конечная дата: {end_date}")
+        
         return filtered_df
 
 
@@ -421,7 +441,7 @@ _loader_instance: Optional[DataLoader] = None
 
 def get_data_loader(data_dir: str = "data/raw", cache_dir: str = "data/processed") -> DataLoader:
     """
-    Получает глобальный экземпляр DataLoader (singleton pattern).
+    Получает экземпляр DataLoader.
     
     Args:
         data_dir: Директория с исходными данными
@@ -430,8 +450,6 @@ def get_data_loader(data_dir: str = "data/raw", cache_dir: str = "data/processed
     Returns:
         Экземпляр DataLoader
     """
-    global _loader_instance
-    if _loader_instance is None:
-        _loader_instance = DataLoader(data_dir=data_dir, cache_dir=cache_dir)
-    return _loader_instance
+    # Создаем новый экземпляр, так как параметры могут отличаться
+    return DataLoader(data_dir=data_dir, cache_dir=cache_dir)
 

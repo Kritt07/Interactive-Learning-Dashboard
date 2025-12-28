@@ -6,9 +6,71 @@
     <title>Интерактивный дашборд успеваемости студентов</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
+        <!-- Welcome Block (shown when no data) -->
+        <div id="welcomeBlock" class="welcome-block hidden">
+            <div class="welcome-content">
+                <div class="welcome-icon">📚</div>
+                <h1 class="welcome-title">Добро пожаловать в дашборд успеваемости!</h1>
+                <p class="welcome-description">
+                    Для начала работы необходимо импортировать данные об оценках студентов и указать систему оценивания.
+                </p>
+                
+                <div class="welcome-form">
+                    <div class="form-section">
+                        <h3>1. Импорт данных</h3>
+                        <p class="form-hint">Выберите CSV или Excel файл с данными об оценках</p>
+                        <label for="welcomeFileInput" class="file-input-label">
+                            <input type="file" id="welcomeFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+                            <span class="file-input-button">📁 Выбрать файл</span>
+                            <span id="welcomeFileName" class="file-name">Файл не выбран</span>
+                        </label>
+                        <p class="import-hint">Файл должен содержать колонки: student_id, student_name, subject, grade, date</p>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h3>2. Система оценивания</h3>
+                        <p class="form-hint">Выберите систему оценивания, используемую в вашем учебном заведении</p>
+                        <div class="grading-system-options">
+                            <label class="radio-label">
+                                <input type="radio" name="gradingSystem" value="5-point" checked>
+                                <span>5-балльная система (2, 3, 4, 5)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="gradingSystem" value="100-point">
+                                <span>100-балльная система (0-100)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="gradingSystem" value="custom">
+                                <span>Другая система</span>
+                            </label>
+                        </div>
+                        <div id="customGradingInputs" class="custom-grading-inputs hidden">
+                            <div class="input-group">
+                                <label for="minGrade">Минимальная оценка:</label>
+                                <input type="number" id="minGrade" step="0.1" placeholder="0">
+                            </div>
+                            <div class="input-group">
+                                <label for="maxGrade">Максимальная оценка:</label>
+                                <input type="number" id="maxGrade" step="0.1" placeholder="100">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button id="startImportBtn" class="btn-primary btn-large" disabled>
+                            Начать работу
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content (shown when data is loaded) -->
+        <div id="mainContent" class="main-content">
         <!-- Header -->
         <header class="header">
             <h1>📊 Дашборд успеваемости студентов</h1>
@@ -17,7 +79,7 @@
 
         <!-- Filters Section -->
         <section class="filters-section">
-            <div class="filters">
+            <div class="filters-row">
                 <div class="filter-group">
                     <label for="studentFilter">Студент:</label>
                     <select id="studentFilter">
@@ -30,7 +92,21 @@
                         <option value="">Все предметы</option>
                     </select>
                 </div>
-                <button id="refreshBtn" class="btn-primary">Обновить данные</button>
+                <div class="filter-group">
+                    <label for="startDateFilter">С даты:</label>
+                    <input type="date" id="startDateFilter">
+                </div>
+                <div class="filter-group">
+                    <label for="endDateFilter">По дату:</label>
+                    <input type="date" id="endDateFilter">
+                </div>
+            </div>
+            <div class="buttons-row">
+                <button id="refreshBtn" class="btn-primary btn-full">Обновить данные</button>
+                <button id="importBtn" class="btn-primary btn-import-main btn-full">📤 Импорт данных</button>
+                <button id="exportBtn" class="btn-primary btn-export-main btn-full">📥 Экспорт графиков</button>
+                <button id="exportCsvBtn" class="btn-primary btn-export-csv btn-full">📄 Экспорт CSV</button>
+                <button id="exportPdfBtn" class="btn-primary btn-export-pdf btn-full">📑 Экспорт PDF</button>
             </div>
         </section>
 
@@ -47,6 +123,8 @@
                 <!-- Графики будут добавлены через JS -->
             </div>
         </section>
+        </div>
+        <!-- End Main Content -->
 
         <!-- Loading Indicator -->
         <div id="loadingIndicator" class="loading hidden">
@@ -54,8 +132,104 @@
             <p>Загрузка данных...</p>
         </div>
 
-        <!-- Error Message -->
-        <div id="errorMessage" class="error-message hidden"></div>
+    <!-- Error Message -->
+    <div id="errorMessage" class="error-message hidden"></div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📤 Импорт данных</h2>
+                <button class="modal-close" id="closeImportModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-section">
+                    <p>Выберите CSV или Excel файл для импорта данных об оценках студентов.</p>
+                    <p class="import-hint">Файл должен содержать колонки: student_id, student_name, subject, grade, date</p>
+                </div>
+                <div class="import-section">
+                    <label for="fileInput" class="file-input-label">
+                        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+                        <span class="file-input-button">Выбрать файл</span>
+                        <span id="fileName" class="file-name">Файл не выбран</span>
+                    </label>
+                </div>
+                <div id="importPreview" class="import-preview hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelImportBtn" class="btn-secondary">Отмена</button>
+                <button id="confirmImportBtn" class="btn-primary" disabled>Импортировать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="exportModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📥 Экспорт</h2>
+                <button class="modal-close" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="export-section">
+                    <h3>Экспорт графиков:</h3>
+                    <div id="plotsCheckboxes" class="checkboxes-container">
+                        <!-- Чекбоксы будут добавлены через JS -->
+                    </div>
+                    <div class="select-all-container">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="selectAllPlots">
+                            <span>Выбрать все графики</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="export-section">
+                    <h3>Форматы экспорта графиков:</h3>
+                    <div id="formatsCheckboxes" class="checkboxes-container">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="format" value="png" checked>
+                            <span>🖼️ PNG (изображение)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="format" value="svg">
+                            <span>📐 SVG (векторное)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="format" value="html">
+                            <span>🌐 HTML (интерактивный)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="format" value="json">
+                            <span>📄 JSON (данные)</span>
+                        </label>
+                    </div>
+                    <div class="select-all-container">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="selectAllFormats">
+                            <span>Выбрать все форматы</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="export-section">
+                    <h3>Экспорт данных:</h3>
+                    <div id="dataExportCheckboxes" class="checkboxes-container">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="dataFormat" value="csv">
+                            <span>📄 CSV (табличные данные)</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="dataFormat" value="pdf">
+                            <span>📑 PDF (отчет с данными и статистикой)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelExportBtn" class="btn-secondary">Отмена</button>
+                <button id="confirmExportBtn" class="btn-primary">Экспортировать</button>
+            </div>
+        </div>
+    </div>
     </div>
     <script src="app.js"></script>
 </body>

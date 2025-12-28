@@ -5,22 +5,136 @@ const API_BASE_URL = 'http://localhost:8000';
 let currentFilters = {
     student_id: null,
     subject: null,
+    start_date: null,
+    end_date: null,
     plot_type: 'dashboard'
 };
 
+// Хранилище информации о графиках для экспорта
+let availablePlots = [];
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadInitialData();
-    await loadPlotData();
-    await loadStatistics();
     setupEventListeners();
+    await checkDataStatus();
 });
 
 // Настройка обработчиков событий
 function setupEventListeners() {
-    document.getElementById('studentFilter').addEventListener('change', handleFilterChange);
-    document.getElementById('subjectFilter').addEventListener('change', handleFilterChange);
-    document.getElementById('refreshBtn').addEventListener('click', handleRefresh);
+    // Обработчики для основного контента (могут быть недоступны, если данных нет)
+    const studentFilter = document.getElementById('studentFilter');
+    const subjectFilter = document.getElementById('subjectFilter');
+    const startDateFilter = document.getElementById('startDateFilter');
+    const endDateFilter = document.getElementById('endDateFilter');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    
+    if (studentFilter) studentFilter.addEventListener('change', handleFilterChange);
+    if (subjectFilter) subjectFilter.addEventListener('change', handleFilterChange);
+    if (startDateFilter) startDateFilter.addEventListener('change', handleFilterChange);
+    if (endDateFilter) endDateFilter.addEventListener('change', handleFilterChange);
+    if (refreshBtn) refreshBtn.addEventListener('click', handleRefresh);
+    if (exportCsvBtn) exportCsvBtn.addEventListener('click', handleExportCsv);
+    if (exportPdfBtn) exportPdfBtn.addEventListener('click', handleExportPdf);
+    
+    // Обработчики для приветственного блока
+    const welcomeFileInput = document.getElementById('welcomeFileInput');
+    const startImportBtn = document.getElementById('startImportBtn');
+    const gradingSystemRadios = document.querySelectorAll('input[name="gradingSystem"]');
+    
+    if (welcomeFileInput) {
+        welcomeFileInput.addEventListener('change', handleWelcomeFileSelect);
+        
+        // Обработчик для кнопки выбора файла
+        const welcomeFileButton = welcomeFileInput.parentElement?.querySelector('.file-input-button');
+        if (welcomeFileButton) {
+            welcomeFileButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                welcomeFileInput.click();
+            });
+        }
+    }
+    
+    if (startImportBtn) {
+        startImportBtn.addEventListener('click', handleWelcomeImport);
+    }
+    
+    if (gradingSystemRadios.length > 0) {
+        gradingSystemRadios.forEach(radio => {
+            radio.addEventListener('change', handleGradingSystemChange);
+        });
+    }
+    
+    // Обработчики для полей кастомной системы оценивания
+    const minGradeInput = document.getElementById('minGrade');
+    const maxGradeInput = document.getElementById('maxGrade');
+    
+    if (minGradeInput) {
+        minGradeInput.addEventListener('input', handleGradingSystemChange);
+    }
+    if (maxGradeInput) {
+        maxGradeInput.addEventListener('input', handleGradingSystemChange);
+    }
+    
+    // Обработчики для модального окна импорта (могут быть недоступны)
+    const importBtn = document.getElementById('importBtn');
+    const closeImportModalBtn = document.getElementById('closeImportModalBtn');
+    const cancelImportBtn = document.getElementById('cancelImportBtn');
+    const confirmImportBtn = document.getElementById('confirmImportBtn');
+    const fileInput = document.getElementById('fileInput');
+    
+    if (importBtn) importBtn.addEventListener('click', openImportModal);
+    if (closeImportModalBtn) closeImportModalBtn.addEventListener('click', closeImportModal);
+    if (cancelImportBtn) cancelImportBtn.addEventListener('click', closeImportModal);
+    if (confirmImportBtn) confirmImportBtn.addEventListener('click', handleImport);
+    if (fileInput) fileInput.addEventListener('change', handleFileSelect);
+    
+    // Обработчик клика на кнопку "Выбрать файл" в модальном окне
+    const fileInputButton = document.querySelector('#fileInput')?.parentElement?.querySelector('.file-input-button');
+    if (fileInputButton && fileInput) {
+        fileInputButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.click();
+        });
+    }
+    
+    // Обработчики для модального окна экспорта (могут быть недоступны)
+    const exportBtn = document.getElementById('exportBtn');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const cancelExportBtn = document.getElementById('cancelExportBtn');
+    const confirmExportBtn = document.getElementById('confirmExportBtn');
+    const selectAllPlots = document.getElementById('selectAllPlots');
+    const selectAllFormats = document.getElementById('selectAllFormats');
+    
+    if (exportBtn) exportBtn.addEventListener('click', openExportModal);
+    if (closeModalBtn) closeModalBtn.addEventListener('click', closeExportModal);
+    if (cancelExportBtn) cancelExportBtn.addEventListener('click', closeExportModal);
+    if (confirmExportBtn) confirmExportBtn.addEventListener('click', handleExport);
+    if (selectAllPlots) selectAllPlots.addEventListener('change', toggleSelectAllPlots);
+    if (selectAllFormats) selectAllFormats.addEventListener('change', toggleSelectAllFormats);
+    
+    // Закрытие модальных окон при клике вне их
+    const importModal = document.getElementById('importModal');
+    const exportModal = document.getElementById('exportModal');
+    
+    if (importModal) {
+        importModal.addEventListener('click', (e) => {
+            if (e.target.id === 'importModal') {
+                closeImportModal();
+            }
+        });
+    }
+    
+    if (exportModal) {
+        exportModal.addEventListener('click', (e) => {
+            if (e.target.id === 'exportModal') {
+                closeExportModal();
+            }
+        });
+    }
     
     // Обработчик изменения размера окна для адаптации графиков
     let resizeTimeout;
@@ -29,26 +143,241 @@ function setupEventListeners() {
         resizeTimeout = setTimeout(() => {
             // Находим все контейнеры графиков и перерисовываем их
             document.querySelectorAll('.plot-item [id^="plot-"]').forEach(plotDiv => {
-                if (plotDiv.id) {
+                if (plotDiv.id && typeof Plotly !== 'undefined') {
                     Plotly.Plots.resize(plotDiv.id);
                 }
             });
             // Также проверяем основной график
             const mainPlot = document.getElementById('plot-main');
-            if (mainPlot) {
+            if (mainPlot && typeof Plotly !== 'undefined') {
                 Plotly.Plots.resize('plot-main');
             }
         }, 150); // Небольшая задержка для оптимизации
     });
 }
 
+// Проверка статуса данных
+async function checkDataStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/data-status`);
+        if (!response.ok) throw new Error('Ошибка проверки статуса данных');
+        
+        const status = await response.json();
+        
+        if (status.has_data && status.total_records > 0) {
+            // Данные есть - показываем основной контент
+            showMainContent();
+            await loadInitialData();
+            await loadPlotData();
+            await loadStatistics();
+        } else {
+            // Данных нет - показываем приветственный блок
+            showWelcomeBlock();
+            
+            // Если есть сохраненная система оценивания, загружаем её
+            if (status.grading_system) {
+                const systemType = status.grading_system.system_type;
+                const radio = document.querySelector(`input[name="gradingSystem"][value="${systemType}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    handleGradingSystemChange();
+                    
+                    if (systemType === 'custom') {
+                        const minGradeInput = document.getElementById('minGrade');
+                        const maxGradeInput = document.getElementById('maxGrade');
+                        if (minGradeInput && status.grading_system.min_grade) {
+                            minGradeInput.value = status.grading_system.min_grade;
+                        }
+                        if (maxGradeInput && status.grading_system.max_grade) {
+                            maxGradeInput.value = status.grading_system.max_grade;
+                        }
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка проверки статуса данных:', error);
+        // В случае ошибки показываем приветственный блок
+        showWelcomeBlock();
+    }
+}
+
+// Показать приветственный блок
+function showWelcomeBlock() {
+    const welcomeBlock = document.getElementById('welcomeBlock');
+    const mainContent = document.getElementById('mainContent');
+    
+    if (welcomeBlock) welcomeBlock.classList.remove('hidden');
+    if (mainContent) mainContent.classList.add('hidden');
+}
+
+// Показать основной контент
+function showMainContent() {
+    const welcomeBlock = document.getElementById('welcomeBlock');
+    const mainContent = document.getElementById('mainContent');
+    
+    if (welcomeBlock) welcomeBlock.classList.add('hidden');
+    if (mainContent) mainContent.classList.remove('hidden');
+}
+
+// Обработка выбора файла в приветственном блоке
+function handleWelcomeFileSelect(event) {
+    const file = event.target.files[0];
+    const fileName = document.getElementById('welcomeFileName');
+    const startBtn = document.getElementById('startImportBtn');
+    
+    if (file) {
+        fileName.textContent = file.name;
+        // Проверяем, выбран ли тип системы оценивания
+        const selectedSystem = document.querySelector('input[name="gradingSystem"]:checked');
+        if (selectedSystem) {
+            startBtn.disabled = false;
+        }
+    } else {
+        fileName.textContent = 'Файл не выбран';
+        startBtn.disabled = true;
+    }
+}
+
+// Обработка изменения системы оценивания
+function handleGradingSystemChange() {
+    const selectedSystem = document.querySelector('input[name="gradingSystem"]:checked');
+    const customInputs = document.getElementById('customGradingInputs');
+    const startBtn = document.getElementById('startImportBtn');
+    const welcomeFileInput = document.getElementById('welcomeFileInput');
+    
+    if (selectedSystem && selectedSystem.value === 'custom') {
+        customInputs.classList.remove('hidden');
+    } else {
+        customInputs.classList.add('hidden');
+    }
+    
+    // Проверяем, можно ли активировать кнопку
+    if (selectedSystem && welcomeFileInput && welcomeFileInput.files.length > 0) {
+        if (selectedSystem.value === 'custom') {
+            const minGrade = document.getElementById('minGrade').value;
+            const maxGrade = document.getElementById('maxGrade').value;
+            startBtn.disabled = !(minGrade && maxGrade);
+        } else {
+            startBtn.disabled = false;
+        }
+    }
+}
+
+// Обработка импорта в приветственном блоке
+async function handleWelcomeImport() {
+    const fileInput = document.getElementById('welcomeFileInput');
+    const selectedSystem = document.querySelector('input[name="gradingSystem"]:checked');
+    
+    if (!fileInput || !fileInput.files[0]) {
+        showError('Пожалуйста, выберите файл для импорта');
+        return;
+    }
+    
+    if (!selectedSystem) {
+        showError('Пожалуйста, выберите систему оценивания');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(fileExt)) {
+        showError('Неподдерживаемый формат файла. Поддерживаются только CSV, XLSX и XLS');
+        return;
+    }
+    
+    // Подготавливаем данные системы оценивания
+    let gradingSystemData = {
+        system_type: selectedSystem.value
+    };
+    
+    if (selectedSystem.value === 'custom') {
+        const minGrade = parseFloat(document.getElementById('minGrade').value);
+        const maxGrade = parseFloat(document.getElementById('maxGrade').value);
+        
+        if (!minGrade || !maxGrade || minGrade >= maxGrade) {
+            showError('Пожалуйста, укажите корректные минимальную и максимальную оценки');
+            return;
+        }
+        
+        gradingSystemData.min_grade = minGrade;
+        gradingSystemData.max_grade = maxGrade;
+    }
+    
+    // Показываем индикатор загрузки
+    showLoading(true);
+    
+    try {
+        // Сначала сохраняем систему оценивания
+        const gradingResponse = await fetch(`${API_BASE_URL}/api/grading-system`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(gradingSystemData)
+        });
+        
+        if (!gradingResponse.ok) {
+            throw new Error('Ошибка сохранения системы оценивания');
+        }
+        
+        // Затем импортируем файл
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const importResponse = await fetch(`${API_BASE_URL}/api/import`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!importResponse.ok) {
+            let errorMessage = `Ошибка ${importResponse.status}: ${importResponse.statusText}`;
+            try {
+                const errorData = await importResponse.json();
+                errorMessage = errorData.detail || errorMessage;
+            } catch (e) {
+                try {
+                    const text = await importResponse.text();
+                    if (text) {
+                        errorMessage = text;
+                    }
+                } catch (textError) {
+                    // Оставляем стандартное сообщение об ошибке
+                }
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const result = await importResponse.json();
+        showLoading(false);
+        showSuccess(`Данные успешно импортированы! Загружено ${result.rows} строк.`);
+        
+        // Переключаемся на основной контент
+        showMainContent();
+        
+        // Загружаем данные
+        await loadInitialData();
+        await loadPlotData();
+        await loadStatistics();
+        
+    } catch (error) {
+        showLoading(false);
+        showError(`Ошибка при импорте: ${error.message}`);
+        console.error('Ошибка импорта:', error);
+    }
+}
+
 // Обработка изменения фильтров
 async function handleFilterChange() {
     const studentId = document.getElementById('studentFilter').value;
     const subject = document.getElementById('subjectFilter').value;
+    const startDate = document.getElementById('startDateFilter').value;
+    const endDate = document.getElementById('endDateFilter').value;
 
     currentFilters.student_id = studentId || null;
     currentFilters.subject = subject || null;
+    currentFilters.start_date = startDate || null;
+    currentFilters.end_date = endDate || null;
     // plot_type всегда 'dashboard'
     currentFilters.plot_type = 'dashboard';
 
@@ -58,9 +387,51 @@ async function handleFilterChange() {
 
 // Обновление данных
 async function handleRefresh() {
-    await loadInitialData();
-    await loadPlotData();
-    await loadStatistics();
+    try {
+        showLoading(true);
+        
+        // Сбрасываем все фильтры в UI
+        document.getElementById('studentFilter').value = '';
+        document.getElementById('subjectFilter').value = '';
+        document.getElementById('startDateFilter').value = '';
+        document.getElementById('endDateFilter').value = '';
+        
+        // Сбрасываем состояние фильтров
+        currentFilters = {
+            student_id: null,
+            subject: null,
+            start_date: null,
+            end_date: null,
+            plot_type: 'dashboard'
+        };
+        
+        // Очищаем контейнер графиков (правильно удаляем Plotly графики)
+        const plotsContainer = document.getElementById('plotsContainer');
+        const existingPlots = plotsContainer.querySelectorAll('[id^="plot-"]');
+        existingPlots.forEach(plotDiv => {
+            if (plotDiv.id && typeof Plotly !== 'undefined') {
+                try {
+                    Plotly.purge(plotDiv.id);
+                } catch (e) {
+                    console.warn(`Ошибка при удалении графика ${plotDiv.id}:`, e);
+                }
+            }
+        });
+        plotsContainer.innerHTML = '';
+        availablePlots = [];
+        
+        // Загружаем данные заново
+        await loadInitialData();
+        await loadPlotData();
+        await loadStatistics();
+        
+        showLoading(false);
+        showSuccess('Данные успешно обновлены!');
+    } catch (error) {
+        showLoading(false);
+        showError(`Ошибка при обновлении данных: ${error.message}`);
+        console.error('Ошибка обновления данных:', error);
+    }
 }
 
 // Загрузка начальных данных (студенты, предметы)
@@ -98,7 +469,14 @@ function populateStudentFilter(students) {
         select.removeChild(select.lastChild);
     }
 
-    students.forEach(student => {
+    // Сортируем студентов по ID по возрастанию
+    const sortedStudents = [...students].sort((a, b) => {
+        const idA = parseInt(a.student_id) || 0;
+        const idB = parseInt(b.student_id) || 0;
+        return idA - idB;
+    });
+
+    sortedStudents.forEach(student => {
         const option = document.createElement('option');
         option.value = student.student_id;
         option.textContent = `${student.student_name} (ID: ${student.student_id})`;
@@ -137,6 +515,12 @@ async function loadPlotData() {
         }
         if (currentFilters.subject) {
             params.append('subject', currentFilters.subject);
+        }
+        if (currentFilters.start_date) {
+            params.append('start_date', currentFilters.start_date);
+        }
+        if (currentFilters.end_date) {
+            params.append('end_date', currentFilters.end_date);
         }
 
         const url = `${API_BASE_URL}/api/plot-data?${params.toString()}`;
@@ -182,7 +566,21 @@ async function loadPlotData() {
 // Рендеринг графиков
 function renderPlots(plotData) {
     const container = document.getElementById('plotsContainer');
+    
+    // Правильно удаляем все существующие графики Plotly перед очисткой
+    const existingPlots = container.querySelectorAll('[id^="plot-"]');
+    existingPlots.forEach(plotDiv => {
+        if (plotDiv.id && typeof Plotly !== 'undefined') {
+            try {
+                Plotly.purge(plotDiv.id);
+            } catch (e) {
+                console.warn(`Ошибка при удалении графика ${plotDiv.id}:`, e);
+            }
+        }
+    });
+    
     container.innerHTML = '';
+    availablePlots = []; // Очищаем список графиков
 
     // Проверка на пустые или некорректные данные
     if (!plotData) {
@@ -249,6 +647,13 @@ function renderPlots(plotData) {
                             displayModeBar: true,
                             modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
                             useResizeHandler: true
+                        });
+                        
+                        // Сохраняем информацию о графике для экспорта
+                        availablePlots.push({
+                            id: plotId,
+                            title: plotNames[key] || key,
+                            key: key
                         });
                         
                         // Принудительно изменяем размер после рендеринга для корректной адаптации
@@ -336,6 +741,18 @@ function renderPlots(plotData) {
                     useResizeHandler: true
                 });
                 
+                // Сохраняем информацию о графике для экспорта
+                const title = (plotData.layout && plotData.layout.title) 
+                    ? (typeof plotData.layout.title === 'string' 
+                        ? plotData.layout.title 
+                        : (plotData.layout.title.text || 'График'))
+                    : 'График';
+                availablePlots.push({
+                    id: plotId,
+                    title: title,
+                    key: 'main'
+                });
+                
                 // Принудительно изменяем размер после рендеринга для корректной адаптации
                 setTimeout(() => {
                     Plotly.Plots.resize(plotId);
@@ -373,6 +790,12 @@ async function loadStatistics() {
         }
         if (currentFilters.subject) {
             params.append('subject', currentFilters.subject);
+        }
+        if (currentFilters.start_date) {
+            params.append('start_date', currentFilters.start_date);
+        }
+        if (currentFilters.end_date) {
+            params.append('end_date', currentFilters.end_date);
         }
 
         const response = await fetch(`${API_BASE_URL}/api/statistics?${params.toString()}`);
@@ -453,5 +876,440 @@ function showError(message) {
 function hideError() {
     const errorDiv = document.getElementById('errorMessage');
     errorDiv.classList.add('hidden');
+}
+
+// Открыть модальное окно экспорта
+function openExportModal() {
+    const modal = document.getElementById('exportModal');
+    const plotsContainer = document.getElementById('plotsCheckboxes');
+    
+    // Очищаем предыдущие чекбоксы
+    plotsContainer.innerHTML = '';
+    
+    // Проверяем, есть ли графики для экспорта
+    if (availablePlots.length === 0) {
+        plotsContainer.innerHTML = '<p class="no-data">Нет графиков для экспорта. Загрузите данные сначала.</p>';
+        modal.classList.remove('hidden');
+        return;
+    }
+    
+    // Создаем чекбоксы для каждого графика
+    availablePlots.forEach(plot => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-label';
+        label.innerHTML = `
+            <input type="checkbox" name="plot" value="${plot.id}" data-title="${plot.title}" checked>
+            <span>${plot.title}</span>
+        `;
+        plotsContainer.appendChild(label);
+    });
+    
+    // Сбрасываем выбор форматов (PNG по умолчанию выбран)
+    document.getElementById('selectAllPlots').checked = true;
+    document.getElementById('selectAllFormats').checked = false;
+    
+    modal.classList.remove('hidden');
+}
+
+// Закрыть модальное окно экспорта
+function closeExportModal() {
+    const modal = document.getElementById('exportModal');
+    modal.classList.add('hidden');
+}
+
+// Переключить выбор всех графиков
+function toggleSelectAllPlots(e) {
+    const checkboxes = document.querySelectorAll('input[name="plot"]');
+    checkboxes.forEach(cb => cb.checked = e.target.checked);
+}
+
+// Переключить выбор всех форматов
+function toggleSelectAllFormats(e) {
+    const checkboxes = document.querySelectorAll('input[name="format"]');
+    checkboxes.forEach(cb => cb.checked = e.target.checked);
+}
+
+// Обработка экспорта в ZIP
+async function handleExport() {
+    const selectedPlots = Array.from(document.querySelectorAll('input[name="plot"]:checked'));
+    const selectedFormats = Array.from(document.querySelectorAll('input[name="format"]:checked'));
+    
+    // Проверка выбора
+    if (selectedPlots.length === 0) {
+        showError('Пожалуйста, выберите хотя бы один график для экспорта');
+        return;
+    }
+    
+    if (selectedFormats.length === 0) {
+        showError('Пожалуйста, выберите хотя бы один формат экспорта');
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    showLoading(true);
+    closeExportModal();
+    
+    try {
+        await exportPlotsToZip(selectedPlots, selectedFormats);
+        showLoading(false);
+        showSuccess(`Успешно экспортировано ${selectedPlots.length} график(ов) в ${selectedFormats.length} формате(ах) в ZIP архив`);
+    } catch (error) {
+        showLoading(false);
+        showError(`Ошибка при экспорте: ${error.message}`);
+        console.error('Ошибка экспорта:', error);
+    }
+}
+
+// Экспорт графиков в ZIP архив
+async function exportPlotsToZip(selectedPlots, selectedFormats) {
+    const zip = new JSZip();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    
+    // Определяем, нужно ли организовывать по папкам
+    // Если выбрано больше одного графика И больше одного формата - организуем по папкам форматов
+    const shouldOrganizeByFolders = selectedPlots.length > 1 && selectedFormats.length > 1;
+    
+    // Экспортируем каждый выбранный график в каждом выбранном формате
+    for (const plotCheckbox of selectedPlots) {
+        const plotId = plotCheckbox.value;
+        const plotTitle = plotCheckbox.dataset.title;
+        const plotDiv = document.getElementById(plotId);
+        
+        if (!plotDiv) {
+            console.warn(`График ${plotId} не найден`);
+            continue;
+        }
+        
+        const sanitizedTitle = plotTitle.replace(/[^a-zа-яё0-9]/gi, '_').toLowerCase();
+        
+        for (const formatCheckbox of selectedFormats) {
+            const format = formatCheckbox.value;
+            
+            // Определяем путь к файлу: в папке формата или в корне
+            const filename = shouldOrganizeByFolders 
+                ? `${format}/${sanitizedTitle}.${format}`
+                : `${sanitizedTitle}.${format}`;
+            
+            try {
+                if (format === 'png' || format === 'svg') {
+                    // Экспорт изображения
+                    const dataUrl = await Plotly.toImage(plotDiv, {
+                        format: format,
+                        width: 1200,
+                        height: 800,
+                        scale: 2
+                    });
+                    
+                    // Преобразуем data URL в blob и добавляем в ZIP
+                    const response = await fetch(dataUrl);
+                    const blob = await response.blob();
+                    zip.file(filename, blob);
+                } else if (format === 'html') {
+                    // Экспорт HTML
+                    const htmlContent = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${plotTitle}</title>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+</head>
+<body>
+    <div id="plot" style="width: 100%; height: 100vh;"></div>
+    <script>
+        const plotData = ${JSON.stringify({
+            data: plotDiv.data || [],
+            layout: plotDiv.layout || {},
+            config: plotDiv.config || {}
+        })};
+        Plotly.newPlot('plot', plotData.data, plotData.layout, plotData.config);
+    </script>
+</body>
+</html>`;
+                    zip.file(filename, htmlContent);
+                } else if (format === 'json') {
+                    // Экспорт JSON
+                    const plotData = {
+                        data: plotDiv.data || [],
+                        layout: plotDiv.layout || {},
+                        config: plotDiv.config || {}
+                    };
+                    const jsonString = JSON.stringify(plotData, null, 2);
+                    zip.file(filename, jsonString);
+                }
+            } catch (error) {
+                console.error(`Ошибка экспорта графика ${plotTitle} в формате ${format}:`, error);
+                // Продолжаем экспорт других файлов
+            }
+        }
+    }
+    
+    // Генерируем ZIP файл
+    const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 }
+    });
+    
+    // Скачиваем ZIP файл
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `graphs_export_${timestamp}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Показать сообщение об успехе
+function showSuccess(message) {
+    const successDiv = document.createElement('div');
+    successDiv.className = 'success-message';
+    successDiv.textContent = message;
+    successDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--secondary-color);
+        color: white;
+        padding: 15px 25px;
+        border-radius: 6px;
+        box-shadow: var(--shadow-hover);
+        z-index: 1001;
+        max-width: 400px;
+        animation: slideIn 0.3s ease-out;
+    `;
+    document.body.appendChild(successDiv);
+    
+    setTimeout(() => {
+        successDiv.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => {
+            if (document.body.contains(successDiv)) {
+                document.body.removeChild(successDiv);
+            }
+        }, 300);
+    }, 3000);
+}
+
+// Открыть модальное окно импорта
+function openImportModal() {
+    const modal = document.getElementById('importModal');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const confirmBtn = document.getElementById('confirmImportBtn');
+    const preview = document.getElementById('importPreview');
+    
+    if (!modal || !fileInput || !fileName || !confirmBtn || !preview) {
+        console.error('Не найдены элементы модального окна импорта');
+        return;
+    }
+    
+    // Сброс состояния
+    fileInput.value = '';
+    fileName.textContent = 'Файл не выбран';
+    confirmBtn.disabled = true;
+    preview.classList.add('hidden');
+    preview.innerHTML = '';
+    
+    modal.classList.remove('hidden');
+}
+
+// Закрыть модальное окно импорта
+function closeImportModal() {
+    const modal = document.getElementById('importModal');
+    modal.classList.add('hidden');
+}
+
+// Обработка выбора файла
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    const fileName = document.getElementById('fileName');
+    const confirmBtn = document.getElementById('confirmImportBtn');
+    const preview = document.getElementById('importPreview');
+    
+    if (file) {
+        fileName.textContent = file.name;
+        confirmBtn.disabled = false;
+        
+        // Показываем информацию о файле
+        const fileSize = (file.size / 1024).toFixed(2);
+        preview.innerHTML = `
+            <div class="file-info">
+                <p><strong>Имя файла:</strong> ${file.name}</p>
+                <p><strong>Размер:</strong> ${fileSize} KB</p>
+                <p><strong>Тип:</strong> ${file.type || 'Неизвестно'}</p>
+            </div>
+        `;
+        preview.classList.remove('hidden');
+    } else {
+        fileName.textContent = 'Файл не выбран';
+        confirmBtn.disabled = true;
+        preview.classList.add('hidden');
+    }
+}
+
+// Обработка импорта файла
+async function handleImport() {
+    const fileInput = document.getElementById('fileInput');
+    
+    if (!fileInput) {
+        showError('Ошибка: элемент выбора файла не найден');
+        return;
+    }
+    
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showError('Пожалуйста, выберите файл для импорта');
+        return;
+    }
+    
+    // Проверка расширения файла
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!['csv', 'xlsx', 'xls'].includes(fileExt)) {
+        showError('Неподдерживаемый формат файла. Поддерживаются только CSV, XLSX и XLS');
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    showLoading(true);
+    closeImportModal();
+    
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch(`${API_BASE_URL}/api/import`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            let errorMessage = `Ошибка ${response.status}: ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.detail || errorMessage;
+            } catch (e) {
+                // Если ответ не JSON, используем текст ответа
+                try {
+                    const text = await response.text();
+                    if (text) {
+                        errorMessage = text;
+                    }
+                } catch (textError) {
+                    // Оставляем стандартное сообщение об ошибке
+                }
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const result = await response.json();
+        showLoading(false);
+        showSuccess(`Файл успешно импортирован! Загружено ${result.rows} строк.`);
+        
+        // Обновляем данные на странице
+        await loadInitialData();
+        await loadPlotData();
+        await loadStatistics();
+        
+    } catch (error) {
+        showLoading(false);
+        showError(`Ошибка при импорте: ${error.message}`);
+        console.error('Ошибка импорта:', error);
+    }
+}
+
+// Обработка экспорта CSV (без показа сообщений - используется в handleExport)
+async function handleExportCsv() {
+    const params = new URLSearchParams();
+    if (currentFilters.student_id) {
+        params.append('student_id', currentFilters.student_id);
+    }
+    if (currentFilters.subject) {
+        params.append('subject', currentFilters.subject);
+    }
+    if (currentFilters.start_date) {
+        params.append('start_date', currentFilters.start_date);
+    }
+    if (currentFilters.end_date) {
+        params.append('end_date', currentFilters.end_date);
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/export/csv?${params.toString()}`);
+    
+    if (!response.ok) {
+        let errorMessage = `Ошибка ${response.status}: ${response.statusText}`;
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.detail || errorMessage;
+        } catch (e) {
+            // Если ответ не JSON
+        }
+        throw new Error(errorMessage);
+    }
+    
+    // Скачиваем файл
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `grades_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+
+// Обработка экспорта PDF
+async function handleExportPdf() {
+    try {
+        showLoading(true);
+        
+        const params = new URLSearchParams();
+        if (currentFilters.student_id) {
+            params.append('student_id', currentFilters.student_id);
+        }
+        if (currentFilters.subject) {
+            params.append('subject', currentFilters.subject);
+        }
+        if (currentFilters.start_date) {
+            params.append('start_date', currentFilters.start_date);
+        }
+        if (currentFilters.end_date) {
+            params.append('end_date', currentFilters.end_date);
+        }
+        
+        const response = await fetch(`${API_BASE_URL}/api/export/pdf?${params.toString()}`);
+        
+        if (!response.ok) {
+            let errorMessage = `Ошибка ${response.status}: ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.detail || errorMessage;
+            } catch (e) {
+                // Если ответ не JSON
+            }
+            throw new Error(errorMessage);
+        }
+        
+        // Скачиваем файл
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        showLoading(false);
+        showSuccess('PDF отчет успешно экспортирован!');
+    } catch (error) {
+        showLoading(false);
+        showError(`Ошибка при экспорте PDF: ${error.message}`);
+        console.error('Ошибка экспорта PDF:', error);
+    }
 }
 

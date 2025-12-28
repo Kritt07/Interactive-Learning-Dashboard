@@ -1134,14 +1134,23 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
         for _, row in filtered_df.iterrows():
             try:
                 grade_val = float(row['grade'])
-                if not pd.isna(grade_val) and 0 <= grade_val <= 5:
+                # Принимаем любые валидные числовые оценки (не только 0-5)
+                if not pd.isna(grade_val) and grade_val >= 0:
                     grades_list.append(grade_val)
                     days_list.append(row['days_since_start'])
             except (ValueError, TypeError):
                 continue
         
-        if len(grades_list) < 3:
+        if len(grades_list) < 2:
             return {"data": [], "layout": {}}
+        
+        # Определяем диапазон оценок для настройки colorbar
+        min_grade = min(grades_list) if grades_list else 0
+        max_grade = max(grades_list) if grades_list else 100
+        grade_range = max_grade - min_grade
+        
+        # Определяем, используется ли шкала 0-5 или 0-100
+        is_percentage_scale = max_grade > 10
         
         fig = go.Figure()
         
@@ -1155,8 +1164,8 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
                 size=8,
                 color=grades_list,
                 colorscale=HEATMAP_COLORS,
-                cmin=0,
-                cmax=5,
+                cmin=min_grade,
+                cmax=max_grade,
                 showscale=True,
                 colorbar=dict(title="Оценка"),
                 line=dict(width=1, color='white')
@@ -1164,42 +1173,53 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
             hovertemplate='День: %{x}<br>Оценка: %{y:.2f}<extra></extra>'
         ))
         
-        # Регрессионная линия
-        try:
-            slope, intercept, r_value, p_value, std_err = stats.linregress(days_list, grades_list)
-            x_trend = np.linspace(min(days_list), max(days_list), 100)
-            y_trend = slope * x_trend + intercept
-            
-            fig.add_trace(go.Scatter(
-                x=x_trend,
-                y=y_trend,
-                mode='lines',
-                name=f'Тренд (R²={r_value**2:.3f})',
-                line=dict(color=COLORS['danger'], width=3),
-                hovertemplate='День: %{x:.0f}<br>Тренд: %{y:.2f}<extra></extra>'
-            ))
-        except Exception as e:
-            logger.warning(f"Не удалось построить регрессионную линию: {e}")
+        # Регрессионная линия (только если есть вариация в днях)
+        min_days = min(days_list) if days_list else 0
+        max_days = max(days_list) if days_list else 0
+        days_range = max_days - min_days
+        
+        if len(grades_list) >= 2:
+            try:
+                # Проверяем, что есть вариация в днях для построения регрессии
+                if days_range > 0 and len(set(days_list)) > 1:
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(days_list, grades_list)
+                    x_trend = np.linspace(min_days, max_days, 100)
+                    y_trend = slope * x_trend + intercept
+                    
+                    fig.add_trace(go.Scatter(
+                        x=x_trend,
+                        y=y_trend,
+                        mode='lines',
+                        name=f'Тренд (R²={r_value**2:.3f})',
+                        line=dict(color=COLORS['danger'], width=3),
+                        hovertemplate='День: %{x:.0f}<br>Тренд: %{y:.2f}<extra></extra>'
+                    ))
+                elif days_range == 0:
+                    # Если все даты одинаковые, показываем горизонтальную линию среднего
+                    avg_grade = np.mean(grades_list)
+                    fig.add_trace(go.Scatter(
+                        x=[min_days - 1, max_days + 1] if max_days >= min_days else [0, 1],
+                        y=[avg_grade, avg_grade],
+                        mode='lines',
+                        name=f'Среднее: {avg_grade:.2f}',
+                        line=dict(color=COLORS['danger'], width=3, dash='dash'),
+                        hovertemplate='Средняя оценка: %{y:.2f}<extra></extra>'
+                    ))
+            except Exception as e:
+                logger.warning(f"Не удалось построить регрессионную линию: {e}")
         
         title = "Корреляция времени и оценок"
         if subject is not None:
             title += f" - {subject}"
         
-        # Вычисляем диапазон данных для автоматического масштабирования
-        min_grade = min(grades_list) if grades_list else 0
-        max_grade = max(grades_list) if grades_list else 5
-        min_days = min(days_list) if days_list else 0
-        max_days = max(days_list) if days_list else 0
-        
         # Вычисляем диапазоны с отступами для лучшей визуализации
-        grade_range = max_grade - min_grade
-        days_range = max_days - min_days
         
         # Адаптивные отступы для оси Y (оценки)
         if grade_range > 0:
-            y_padding = max(grade_range * 0.1, 0.2)  # 10% от диапазона или минимум 0.2
+            y_padding = max(grade_range * 0.1, max_grade * 0.05)  # 10% от диапазона или 5% от максимума
         else:
-            y_padding = 0.5  # Если все оценки одинаковые
+            # Если все оценки одинаковые, добавляем небольшой отступ
+            y_padding = max_grade * 0.1 if max_grade > 0 else 1
         
         y_min = max(0, min_grade - y_padding)  # Минимум не ниже 0
         y_max = max_grade + y_padding
@@ -1216,8 +1236,10 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
         # Адаптивное количество меток на основе диапазона
         if grade_range <= 5:
             y_nticks = max(4, min(8, int(grade_range * 2) + 2))
+        elif grade_range <= 100:
+            y_nticks = max(5, min(10, int(grade_range / 10) + 2))
         else:
-            y_nticks = 6
+            y_nticks = 8
         
         if days_range <= 30:
             x_nticks = max(4, min(8, int(days_range / 5) + 2))
@@ -1233,7 +1255,7 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
                 font=dict(size=12, color=COLORS['dark'])
             ),
             autorange=True,  # Автоматическое масштабирование
-            range=[x_min, x_max] if days_range > 0 else None,  # Устанавливаем диапазон только если есть данные
+            range=[x_min, x_max] if days_range > 0 else [0, max(1, x_max)],  # Устанавливаем диапазон только если есть данные
             showgrid=True,
             gridcolor='rgba(0,0,0,0.1)',
             gridwidth=1,
@@ -1245,13 +1267,21 @@ def create_scatter_trend_plot(df: pd.DataFrame, subject: Optional[str] = None) -
             tickfont=dict(size=10, color=COLORS['dark'])
         )
         
+        # Определяем диапазон для оси Y
+        if grade_range > 0:
+            y_range = [y_min, y_max]
+        elif is_percentage_scale:
+            y_range = [0, 100]
+        else:
+            y_range = [0, 5.5]
+        
         yaxis_config = dict(
             title=dict(
                 text="Оценка",
                 font=dict(size=12, color=COLORS['dark'])
             ),
             autorange=True,  # Автоматическое масштабирование
-            range=[y_min, y_max] if grade_range > 0 else [0, 5.5],  # Устанавливаем диапазон только если есть данные
+            range=y_range,
             showgrid=True,
             gridcolor='rgba(0,0,0,0.1)',
             gridwidth=1,

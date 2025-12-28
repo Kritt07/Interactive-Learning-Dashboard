@@ -1,8 +1,14 @@
 import pandas as pd
 from src import plots
+from src.data_loader import get_data_loader
 
-# Загружаем данные
-df = pd.read_csv('data/raw/students_raw.csv')
+# Загружаем данные через DataLoader
+data_loader = get_data_loader(data_dir="data/raw", cache_dir="data/processed")
+try:
+    df = data_loader.load_data(use_cache=True)
+except FileNotFoundError:
+    print("Ошибка: Данные не найдены. Пожалуйста, импортируйте данные через веб-интерфейс приложения.")
+    exit(1)
 print(f"Всего записей: {len(df)}")
 print(f"Студентов: {df['student_id'].nunique()}")
 print(f"Предметов: {df['subject'].nunique()}")

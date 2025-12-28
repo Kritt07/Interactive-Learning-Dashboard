@@ -22,3 +22,7 @@ black>=22.0.0
 
 # Optional (если понадобится парсинг или расширенная математика)
 scikit-learn>=1.3.0
+
+# Export functionality
+reportlab>=4.0.0  # For PDF generation
+kaleido>=0.2.1  # For Plotly static image export
