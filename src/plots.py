@@ -11,6 +11,9 @@ import logging
 import numpy as np
 from scipy import stats
 from collections import Counter
+import json
+from pathlib import Path
+from src.config import PROCESSED_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,38 @@ HEATMAP_COLORS = [
     [0.66, '#eab308'],   # Ярко-желтый (хорошо)
     [1, '#22c55e']       # Зеленый (отличные оценки)
 ]
+
+
+def get_max_grade_from_grading_system() -> Optional[float]:
+    """
+    Получает максимальную оценку из системы оценивания.
+    
+    Returns:
+        Максимальная оценка или None, если система оценивания не настроена
+    """
+    try:
+        grading_system_file = PROCESSED_DIR / "grading_system.json"
+        if not grading_system_file.exists():
+            return None
+        
+        with open(grading_system_file, 'r', encoding='utf-8') as f:
+            grading_system = json.load(f)
+        
+        system_type = grading_system.get('system_type')
+        
+        if system_type == '5-point':
+            return 5.0
+        elif system_type == '100-point':
+            return 100.0
+        elif system_type == 'custom':
+            max_grade = grading_system.get('max_grade')
+            if max_grade is not None:
+                return float(max_grade)
+        
+        return None
+    except Exception as e:
+        logger.warning(f"Ошибка загрузки системы оценивания: {e}")
+        return None
 
 
 def create_grade_distribution_plot(df: pd.DataFrame, student_id: Optional[int] = None, 
@@ -959,7 +994,14 @@ def create_subject_heatmap(df: pd.DataFrame, student_id: Optional[int] = None) -
                 return {"data": [], "layout": {"title": "Тепловая карта по предметам"}}
             
             z_min = 0  # Минимум всегда 0
-            z_max = max(all_values)  # Максимум вычисляется из данных (может быть 5, 100 и т.д.)
+            
+            # Получаем максимальную оценку из системы оценивания
+            max_grade_from_system = get_max_grade_from_grading_system()
+            if max_grade_from_system is not None:
+                z_max = max_grade_from_system
+            else:
+                # Если система оценивания не настроена, используем максимум из данных
+                z_max = max(all_values)
             
             # Если максимум меньше 1, устанавливаем его в 1 для корректного отображения
             if z_max < 1:

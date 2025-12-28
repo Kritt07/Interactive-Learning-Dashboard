@@ -20,11 +20,16 @@
     --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
     line-height: 1.6;
+    animation: fadeIn 0.5s ease-out;
 }
 
 .container {
@@ -42,17 +47,20 @@ body {
     color: white;
     border-radius: 10px;
     box-shadow: var(--shadow);
+    animation: fadeInUp 0.6s ease-out;
 }
 
 .header h1 {
     font-size: 2.5em;
     margin-bottom: 10px;
     font-weight: 700;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
 }
 
 .subtitle {
     font-size: 1.1em;
     opacity: 0.95;
+    animation: fadeInUp 0.8s ease-out 0.4s both;
 }
 
 /* Filters Section */
@@ -62,6 +70,7 @@ body {
     border-radius: 10px;
     box-shadow: var(--shadow);
     margin-bottom: 30px;
+    animation: fadeInUp 0.6s ease-out 0.3s both;
 }
 
 .filters-row {
@@ -106,17 +115,20 @@ body {
     background: white;
     color: var(--text-primary);
     cursor: pointer;
-    transition: border-color 0.3s;
+    transition: all 0.3s ease;
 }
 
 .filter-group select:hover {
     border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
 }
 
 .filter-group select:focus {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    animation: glow 2s ease-in-out infinite;
 }
 
 .filter-group input[type="date"] {
@@ -128,18 +140,21 @@ body {
     background: white;
     color: var(--text-primary);
     cursor: pointer;
-    transition: border-color 0.3s;
+    transition: all 0.3s ease;
     font-family: inherit;
 }
 
 .filter-group input[type="date"]:hover {
     border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
 }
 
 .filter-group input[type="date"]:focus {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    animation: glow 2s ease-in-out infinite;
 }
 
 /* Buttons */
@@ -152,18 +167,66 @@ body {
     font-size: 1em;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.3s, transform 0.2s;
+    transition: all 0.3s ease;
     white-space: nowrap;
+    position: relative;
+    overflow: hidden;
 }
 
 .btn-primary:hover {
     background: var(--primary-dark);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
 }
 
 .btn-primary:active {
-    transform: translateY(0);
+    transform: translateY(-1px) scale(0.98);
+}
+
+.btn-primary::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn-primary:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    animation: none;
+}
+
+.btn-primary:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Анимация для кнопок при активации */
+@keyframes buttonPress {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(0.95);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.btn-primary:not(:disabled):active {
+    animation: buttonPress 0.2s ease;
 }
 
 /* Statistics Section */
@@ -185,17 +248,49 @@ body {
     display: flex;
     align-items: center;
     gap: 20px;
-    transition: transform 0.3s, box-shadow 0.3s;
+    transition: all 0.3s ease;
+    animation: scaleIn 0.5s ease-out both;
+    opacity: 0;
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-hover);
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.stat-card:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.stat-card:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.stat-card:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+.stat-card:nth-child(4) {
+    animation-delay: 0.4s;
+}
+
+.stat-card:nth-child(5) {
+    animation-delay: 0.5s;
+}
+
+.stat-card:nth-child(6) {
+    animation-delay: 0.6s;
 }
 
 .stat-icon {
     font-size: 3em;
     line-height: 1;
+    animation: float 3s ease-in-out infinite;
+    transition: transform 0.3s ease;
+}
+
+.stat-card:hover .stat-icon {
+    animation: bounce 0.6s ease;
 }
 
 .stat-content {
@@ -207,6 +302,12 @@ body {
     font-weight: 700;
     color: var(--primary-color);
     margin-bottom: 5px;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover .stat-value {
+    transform: scale(1.1);
+    color: var(--primary-dark);
 }
 
 .stat-title {
@@ -234,6 +335,22 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 450px;
+    animation: fadeInUp 0.6s ease-out both;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.plot-item:nth-child(odd) {
+    animation-name: slideInLeft;
+}
+
+.plot-item:nth-child(even) {
+    animation-name: slideInRight;
+}
+
+.plot-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .plot-item > div[id^="plot-"] {
@@ -249,6 +366,12 @@ body {
     color: var(--text-primary);
     padding-bottom: 10px;
     border-bottom: 2px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+
+.plot-item:hover .plot-title {
+    color: var(--primary-color);
+    transform: translateX(5px);
 }
 
 .no-data {
@@ -282,7 +405,7 @@ body {
     border-radius: 50%;
     width: 50px;
     height: 50px;
-    animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite, pulse 2s ease-in-out infinite;
     margin: 0 auto 20px;
 }
 
@@ -295,6 +418,7 @@ body {
     color: var(--text-primary);
     font-size: 1.1em;
     font-weight: 500;
+    animation: fadeIn 0.5s ease-out, pulse 2s ease-in-out infinite 0.5s;
 }
 
 /* Error Message */
@@ -309,7 +433,7 @@ body {
     box-shadow: var(--shadow-hover);
     z-index: 1001;
     max-width: 400px;
-    animation: slideIn 0.3s ease-out;
+    animation: slideIn 0.3s ease-out, shake 0.5s ease-out 0.3s;
 }
 
 .error-message.hidden {
@@ -338,14 +462,107 @@ body {
     }
 }
 
-@keyframes slideOut {
+/* Дополнительные анимации */
+@keyframes fadeInUp {
     from {
-        transform: translateX(0);
-        opacity: 1;
+        opacity: 0;
+        transform: translateY(30px);
     }
     to {
-        transform: translateX(400px);
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
         opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    10%, 30%, 50%, 70%, 90% {
+        transform: translateX(-10px);
+    }
+    20%, 40%, 60%, 80% {
+        transform: translateX(10px);
+    }
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(52, 152, 219, 0.8), 0 0 30px rgba(52, 152, 219, 0.6);
+    }
+}
+
+@keyframes float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
     }
 }
 
@@ -531,11 +748,14 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.3s;
+    transition: all 0.3s ease;
+    border-radius: 50%;
 }
 
 .modal-close:hover {
     color: var(--text-primary);
+    background-color: var(--bg-color);
+    transform: rotate(90deg) scale(1.1);
 }
 
 .modal-body {
@@ -573,11 +793,14 @@ body {
     cursor: pointer;
     padding: 10px;
     border-radius: 6px;
-    transition: background-color 0.2s;
+    transition: all 0.3s ease;
+    animation: fadeInUp 0.4s ease-out both;
 }
 
 .checkbox-label:hover {
     background-color: var(--bg-color);
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -656,13 +879,20 @@ body {
     color: white;
     border-radius: 6px;
     font-weight: 600;
-    transition: background 0.3s, transform 0.2s;
+    transition: all 0.3s ease;
     white-space: nowrap;
+    position: relative;
+    overflow: hidden;
 }
 
 .file-input-button:hover {
     background: var(--primary-dark);
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+.file-input-button:active {
+    transform: translateY(-1px) scale(0.98);
 }
 
 .file-name {
@@ -676,6 +906,7 @@ body {
     background: var(--bg-color);
     border-radius: 6px;
     border: 1px solid var(--border-color);
+    animation: fadeInUp 0.5s ease-out;
 }
 
 .import-preview.hidden {
@@ -719,11 +950,13 @@ body {
     max-width: 800px;
     width: 100%;
     text-align: center;
+    animation: scaleIn 0.6s ease-out;
 }
 
 .welcome-icon {
     font-size: 5em;
     margin-bottom: 20px;
+    animation: bounce 2s ease-in-out infinite, float 3s ease-in-out infinite;
 }
 
 .welcome-title {
@@ -731,6 +964,7 @@ body {
     color: var(--text-primary);
     margin-bottom: 15px;
     font-weight: 700;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
 }
 
 .welcome-description {
@@ -750,6 +984,22 @@ body {
     background: var(--bg-color);
     border-radius: 10px;
     border: 2px solid var(--border-color);
+    transition: all 0.3s ease;
+    animation: fadeInUp 0.6s ease-out both;
+}
+
+.form-section:nth-child(1) {
+    animation-delay: 0.3s;
+}
+
+.form-section:nth-child(2) {
+    animation-delay: 0.5s;
+}
+
+.form-section:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.2);
+    transform: translateY(-3px);
 }
 
 .form-section h3 {
@@ -779,13 +1029,28 @@ body {
     cursor: pointer;
     padding: 12px;
     border-radius: 6px;
-    transition: background-color 0.2s;
+    transition: all 0.3s ease;
     border: 2px solid var(--border-color);
+    animation: fadeInUp 0.4s ease-out both;
+}
+
+.radio-label:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+.radio-label:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.radio-label:nth-child(3) {
+    animation-delay: 0.3s;
 }
 
 .radio-label:hover {
     background-color: var(--card-bg);
     border-color: var(--primary-color);
+    transform: translateX(5px) scale(1.02);
+    box-shadow: 0 4px 10px rgba(52, 152, 219, 0.2);
 }
 
 .radio-label input[type="radio"] {
@@ -808,6 +1073,15 @@ body {
     border-radius: 6px;
     display: flex;
     gap: 15px;
+    animation: fadeInUp 0.4s ease-out;
+}
+
+.custom-grading-inputs input {
+    transition: all 0.3s ease;
+}
+
+.custom-grading-inputs input:focus {
+    animation: glow 2s ease-in-out infinite;
 }
 
 .custom-grading-inputs.hidden {
@@ -841,6 +1115,8 @@ body {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    transform: scale(1.02);
+    animation: glow 2s ease-in-out infinite;
 }
 
 .form-actions {
@@ -852,10 +1128,36 @@ body {
     padding: 16px 40px;
     font-size: 1.1em;
     min-width: 200px;
+    animation: fadeInUp 0.6s ease-out 0.7s both;
+}
+
+.btn-large:hover {
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.main-content {
+    animation: fadeIn 0.5s ease-out;
 }
 
 .main-content.hidden {
     display: none;
+}
+
+/* Анимация появления контента при загрузке */
+@keyframes contentFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stats-section,
+.plots-section {
+    animation: contentFadeIn 0.6s ease-out;
 }
 
 /* Responsive Modal */
