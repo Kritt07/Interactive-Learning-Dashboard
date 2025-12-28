@@ -1,6 +1,7 @@
 """
 Тесты для API endpoints.
 """
+
 import pytest
 from fastapi.testclient import TestClient
 from src.app import app
@@ -30,7 +31,7 @@ def test_plot_data_dashboard():
     """Тест получения данных для дашборда."""
     response = client.get("/api/plot-data?plot_type=dashboard")
     assert response.status_code in [200, 500]  # 500 если нет данных
-    
+
     if response.status_code == 200:
         data = response.json()
         assert isinstance(data, dict)
@@ -45,7 +46,7 @@ def test_plot_data_dashboard():
 def test_plot_data_distribution():
     """Тест получения графика распределения."""
     response = client.get("/api/plot-data?plot_type=distribution")
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "data" in data
@@ -56,7 +57,7 @@ def test_students_endpoint():
     """Тест получения списка студентов."""
     response = client.get("/api/students")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "students" in data
@@ -68,7 +69,7 @@ def test_statistics_endpoint():
     """Тест получения статистики."""
     response = client.get("/api/statistics")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert isinstance(data, dict)
@@ -78,7 +79,7 @@ def test_subjects_endpoint():
     """Тест получения списка предметов."""
     response = client.get("/api/subjects")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "subjects" in data
@@ -90,7 +91,7 @@ def test_plot_data_with_filters():
     # Тест с фильтром по студенту
     response = client.get("/api/plot-data?plot_type=trend&student_id=1")
     assert response.status_code in [200, 500]
-    
+
     # Тест с фильтром по предмету
     response = client.get("/api/plot-data?plot_type=trend&subject=Math")
     assert response.status_code in [200, 500]
@@ -100,7 +101,7 @@ def test_plot_data_comparison():
     """Тест получения графика сравнения."""
     response = client.get("/api/plot-data?plot_type=comparison")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "data" in data
@@ -111,7 +112,7 @@ def test_plot_data_heatmap():
     """Тест получения тепловой карты."""
     response = client.get("/api/plot-data?plot_type=heatmap")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "data" in data
@@ -122,7 +123,7 @@ def test_plot_data_box():
     """Тест получения box-plot."""
     response = client.get("/api/plot-data?plot_type=box")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "data" in data
@@ -133,7 +134,7 @@ def test_grades_endpoint():
     """Тест получения оценок."""
     response = client.get("/api/grades")
     assert response.status_code in [200, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert "grades" in data
@@ -146,11 +147,11 @@ def test_grades_with_filters():
     # С фильтром по студенту
     response = client.get("/api/grades?student_id=1")
     assert response.status_code in [200, 500]
-    
+
     # С фильтром по предмету
     response = client.get("/api/grades?subject=Math")
     assert response.status_code in [200, 500]
-    
+
     # С лимитом
     response = client.get("/api/grades?limit=10")
     assert response.status_code in [200, 500]
@@ -161,7 +162,7 @@ def test_statistics_with_filters():
     # С фильтром по студенту
     response = client.get("/api/statistics?student_id=1")
     assert response.status_code in [200, 500]
-    
+
     # С фильтром по предмету
     response = client.get("/api/statistics?subject=Math")
     assert response.status_code in [200, 500]
@@ -172,7 +173,7 @@ def test_student_statistics_endpoint():
     response = client.get("/api/students/1/statistics")
     # Может быть 200, 404 или 500 в зависимости от наличия данных
     assert response.status_code in [200, 404, 500]
-    
+
     if response.status_code == 200:
         data = response.json()
         assert isinstance(data, dict)
