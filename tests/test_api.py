@@ -104,8 +104,14 @@ def test_plot_data_comparison():
 
     if response.status_code == 200:
         data = response.json()
-        assert "data" in data
-        assert "layout" in data
+        # Для comparison возвращается словарь с subject_comparison и student_comparison
+        assert "subject_comparison" in data
+        assert "student_comparison" in data
+        # Проверяем структуру каждого графика
+        assert "data" in data["subject_comparison"]
+        assert "layout" in data["subject_comparison"]
+        assert "data" in data["student_comparison"]
+        assert "layout" in data["student_comparison"]
 
 
 def test_plot_data_heatmap():
